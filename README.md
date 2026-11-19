@@ -1,5 +1,5 @@
-# iOS 17 for Samsung Galaxy A03 (SM-A035M)
+# iOS 17.7 for Samsung Galaxy A03 (SM-A035M)
 
 ## IPSW Base?
-I will use IPSW firmware from iPhone 11 as base because the design itself is similar
+I will use IPSW firmware from iPhone 11 as base (21H16) because the design itself is similar
 
