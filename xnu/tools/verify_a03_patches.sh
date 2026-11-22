@@ -1,12 +1,14 @@
 #!/bin/bash
-# Verify that xnu/patches-a03/*.patch apply cleanly, in order, to a pristine
-# xnu-12377.121.6 tree. The tree itself is never modified.
+# Verify that xnu/patches-a03/*.patch apply cleanly, in order, to a tree that
+# already contains the Bergamota donor series. Set A03_XNU_ROOT to that tree;
+# it defaults to the pristine xnu-src for backwards compatibility.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 PATCHES="$HERE/../patches-a03"
+BASE="${A03_XNU_ROOT:-$HERE/../../xnu-src}"
 WORK=$(mktemp -d)
 trap 'rm -rf "$WORK"' EXIT
-cp -a "$HERE/../../xnu-src" "$WORK/xnu"
+cp -a "$BASE" "$WORK/xnu"
 cd "$WORK/xnu"
 for p in "$PATCHES"/*.patch; do
     echo "== $(basename "$p")"

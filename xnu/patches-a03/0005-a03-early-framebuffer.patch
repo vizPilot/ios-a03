@@ -165,10 +165,11 @@ new file mode 100644
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -474,6 +474,24 @@
+@@ -524,7 +524,25 @@
  	mov		x20, x0
  	mov		x21, #0
  
+-#if defined(SWEET)
 +#if defined(A03)
 +	/* Stage 0: 80x32 magenta band; needs neither stack nor page tables. */
 +	MOV64	x0, (0x9e000000 + 1568 * 2880)
@@ -187,14 +188,14 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 +	dsb		sy
 +#endif /* A03 */
 +
- 	// Set low reset vector before attempting any loads
- 	adrp	x0, EXT(LowExceptionVectorBase)@page
- 	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
-@@ -619,6 +637,22 @@
- 	/* Setup the KVA bootstrap mapping */
- 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
++	// Set low reset vector before attempting any loads
+ 	/* Stage 0: white 64x32 band, no stack or page tables needed. */
+ 	MOV64	x0, (0x9c000000 + 2368 * 4320)
+ 	mov		w1, #-1
+@@ -690,6 +708,24 @@
  	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
-+
+ 
+ #if defined(SWEET)
 +#if defined(A03)
 +	/*
 +	 * Splash FB: one Normal-NC block in the existing V=P L2 table.
@@ -210,9 +211,12 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 +	add		x13, x25, #(2 * PGBYTES)
 +	str		x11, [x13, x12, lsl #TTE_SHIFT]
 +#endif /* A03 */
- 
- 	/* Ensure TTEs are visible */
- 	dsb		ish
++#endif /* SWEET */
++
++	/* Ensure TTEs are visible */
+ 	/*
+ 	 * Splash framebuffer: one 32MB Normal-NC block in the EXISTING V=P
+ 	 * L2 table. Both framebuffer and RAM use L1 index 0; another call to
 diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
 --- a/osfmk/arm/arm_init.c
 +++ b/osfmk/arm/arm_init.c
@@ -221,64 +225,41 @@ diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
  #include <pexpert/device_tree.h>
  #include <arm64/proc_reg.h>
 +#include <arm64/a03_early.h>
+ #include <arm64/sweet_early.h>
  #include <arm/pmap.h>
  #include <arm/caches_internal.h>
- #include <arm/cpu_internal.h>
-@@ -356,6 +357,8 @@
- 	DTEntry chosen = NULL;
- 	unsigned int dt_entry_size = 0;
- 
-+	a03_early_mark(1, "arm_init entered (MMU on)");
-+
- 	arm_slide_rebase_and_sign_image();
- 
- 	arm_static_if_init(args);
-@@ -376,6 +379,7 @@
+@@ -382,6 +383,7 @@
  #endif /* defined(HAS_APPLE_PAC) */
  
  	PE_init_platform(FALSE, args); /* Get platform expert set up */
 +	a03_early_mark(2, "PE_init_platform done");
+ 	sweet_early_mark(2, "PE_init_platform done");
  
  #if __arm64__
- 	configure_timer_apple_regs();
-@@ -459,6 +463,7 @@
+@@ -466,6 +468,7 @@
  #endif
  
  	ml_parse_cpu_topology();
 +	a03_early_mark(3, "ml_parse_cpu_topology done");
+ 	sweet_early_mark(3, "ml_parse_cpu_topology done");
  
  
- 	boot_cpu_id = ml_get_boot_cpu_number();
-@@ -490,11 +495,13 @@
- 	 */
- 	thread->machine.preemption_count = 0;
- 	cpu_bootstrap();
-+	a03_early_mark(4, "cpu_bootstrap done");
- 
- 	rtclock_early_init();
+@@ -504,6 +507,7 @@
  
  	kernel_debug_string_early("kernel_startup_bootstrap");
  	kernel_startup_bootstrap();
 +	a03_early_mark(5, "kernel_startup_bootstrap done");
+ 	sweet_early_mark(5, "kernel_startup_bootstrap done");
  
  	/*
- 	 * Initialize the timer callout world
-@@ -502,6 +509,7 @@
- 	timer_call_init();
- 
- 	cpu_init();
-+	a03_early_mark(6, "cpu_init done");
- 
- 	processor_bootstrap();
- 
-@@ -569,6 +577,7 @@
- 	gDramSize = *dram_size;
+@@ -581,6 +585,7 @@
  	pmap_first_pnum = (ppnum_t)atop(gDramBase);
  
+ 	sweet_early_mark(7, "entering arm_vm_init");
 +	a03_early_mark(7, "entering arm_vm_init");
  	arm_vm_init(xmaxmem, args);
+ 	sweet_early_mark(15, "arm_vm_init returned");
  
- 	if (debug_boot_arg) {
 diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
 --- a/osfmk/arm64/arm_vm_init.c
 +++ b/osfmk/arm64/arm_vm_init.c
@@ -287,32 +268,23 @@ diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
  #include <arm64/proc_reg.h>
  #include <arm64/lowglobals.h>
 +#include <arm64/a03_early.h>
+ #include <arm64/sweet_early.h>
  #include <arm/cpu_data_internal.h>
  #include <arm/misc_protos.h>
- #include <pexpert/arm64/boot.h>
-@@ -2166,6 +2167,8 @@
- 
- 	ml_enable_monitor();
- 
-+	/* The FB VA=PA mapping belongs to the outgoing TTBR0. */
-+	a03_early_disable();
- 	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
- 
- 	flush_mmu_tlb();
 diff --git a/osfmk/kern/debug.c b/osfmk/kern/debug.c
 --- a/osfmk/kern/debug.c
 +++ b/osfmk/kern/debug.c
-@@ -86,6 +86,9 @@
- #include <stdatomic.h>
+@@ -87,6 +87,9 @@
  #include <sys/pgo.h>
  #include <console/serial_protos.h>
-+#if defined(__arm64__)
+ #if defined(__arm64__)
 +#include <arm64/a03_early.h>
 +#endif
++#if defined(__arm64__)
+ #include <arm64/sweet_early.h>
+ #endif
  #include <IOKit/IOBSD.h>
- #include <libkern/crc.h>
- 
-@@ -1253,6 +1256,11 @@
+@@ -1256,6 +1259,11 @@
  {
  #pragma clang diagnostic pop
  
@@ -321,6 +293,6 @@ diff --git a/osfmk/kern/debug.c b/osfmk/kern/debug.c
 +	a03_early_panic(panic_format_str, panic_args);
 +#endif /* A03 */
 +
- #if defined(__x86_64__) && (DEVELOPMENT || DEBUG)
- 	read_lbr();
- #endif
+ #if defined(SWEET)
+ 	/* No CPU/thread/debugger state is required for this first panic copy. */
+ 	sweet_early_panic(panic_format_str, panic_args);

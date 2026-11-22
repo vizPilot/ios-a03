@@ -22,9 +22,9 @@ Llegar a una **consola XNU propia** en `SM-A035M` con **Unisoc T606 / UMS9230**:
 - [x] Framebuffer calibrado: `0x9E000000`, 720×1600, BGRA32, stride 2880.
 - [x] Loader Mach-O validado con binario sintético (`LC_SEGMENT_64`, `LC_UNIXTHREAD`, `boot_args`, FDT).
 - [x] XNU `12377.121.6` clonado como fuente local (solo fuente, fuera del repo publicado).
-- [x] 10 parches A03 generados y verificados (`git apply` en orden sobre árbol limpio).
+- [x] 7 parches A03 generados contra el árbol donante y verificados con `git apply`.
 - [x] Workflow `xnu-a03.yml` para `macos-15-intel` + Xcode 26.1 + KDK.
-- [ ] Ejecutar el workflow y obtener `kernel.development.a03`.
+- [ ] Reejecutar el workflow y obtener `kernel.development.a03`.
 - [ ] Integrar el kernel real con `stub/build_macho_boot.sh`.
 - [ ] Drivers IOKit mínimos para T606.
 
@@ -45,7 +45,7 @@ El build **no se ha ejecutado todavía**; el resultado puede fallar por huecos d
 |---|---|
 | `docs/00`–`docs/08` | Investigación, debug por framebuffer y preparación del build |
 | `stub/` | Payload ARM64, loader Mach-O y scripts de ensamblado del `boot.img` |
-| `xnu/patches-a03/` | 10 parches A03 generados reproduciblemente |
+| `xnu/patches-a03/` | 7 parches A03 generados contra el árbol donante |
 | `xnu/tools/gen_a03_patches.py` | Generador desde `xnu-src` (no incluido en el repo) |
 | `xnu/tools/verify_a03_patches.sh` | Verificación `git apply` sobre copia limpia |
 | `xnu/stage-a03.py` | Staging en `darwin-xnu-build` |

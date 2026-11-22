@@ -100,16 +100,18 @@ diff --git a/iokit/KernelConfigTables.cpp b/iokit/KernelConfigTables.cpp
 +    "     'IOProbeScore'    = 10000:32;"
 +    "   },"
 +#endif
+ #if defined(ARM64_BOARD_CONFIG_SWEET)
      "   {"
-     "     'IOClass'         = IOPanicPlatform;"
-     "     'IOProviderClass' = IOPlatformExpertDevice;"
+     "     'IOClass'         = SweetPlatformExpert;"
 diff --git a/iokit/conf/files.arm64 b/iokit/conf/files.arm64
 --- a/iokit/conf/files.arm64
 +++ b/iokit/conf/files.arm64
-@@ -5,4 +5,6 @@
+@@ -5,6 +5,8 @@
  
  # SMP
  iokit/Kernel/arm/AppleARMSMP.cpp    					optional iokitcpp
 +# A03 device-tree platform (empty translation unit on other boards)
 +iokit/Kernel/arm/A03PlatformExpert.cpp                         optional iokitcpp
  
+ # SWEET device-tree platform (empty translation unit on other boards)
+ iokit/Kernel/arm/SweetPlatformExpert.cpp                         optional iokitcpp

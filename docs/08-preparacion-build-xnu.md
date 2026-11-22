@@ -119,8 +119,28 @@ consumidor de ese contrato.
 - [x] Escribir `xnu/patches-a03/` propio, inspirado en la estructura, sin vendorizar parches ajenos.
 - [x] Verificar que la serie de 10 parches se aplica en orden sobre un árbol limpio (`xnu/tools/verify_a03_patches.sh`).
 - [ ] Portar las familias de parches pendientes (KPC/exports del KDK, PSCI SMP, ramdisk como dispositivo, RNG).
-- [ ] Ejecutar el build en macOS y verificar el binario resultante.
+- [x] Publicar el andamiaje en `https://github.com/vizPilot/ios-a03` (124 archivos de texto, sin binarios ni seriales).
+- [x] Ejecutar el workflow `xnu-a03.yml` en `macos-15-intel` (run `45080969152`): falló aplicando `9000-a03-0001`.
+- [x] Regenerar la serie A03 contra el árbol con 264 parches donantes aplicados: 7 parches, verificados con `git apply`.
+- [ ] Reejecutar el build en macOS y verificar el binario resultante.
 - [ ] Integrar el kernel compilado con `stub/build_macho_boot.sh` como kernelcache de prueba.
+
+### Resultado del primer run de GitHub Actions
+
+Los 267 parches de Bergamota se aplicaron correctamente, pero nuestro `0001` fue rechazado:
+
+```text
+Required A03 patch rejected: .../9000-a03-0001-a03-machine-config.patch
+error: patch failed: makedefs/MakeInc.def:29
+error: makedefs/MakeInc.def: patch does not apply
+```
+
+Causa: la serie A03 se generó contra XNU prístino y verificado así, pero en el runner se aplica
+**después** de los donantes, que ya han tocado `MakeInc.def` y otros archivos de contexto.
+La serie se regeneró con `A03_XNU_ROOT` apuntando a un árbol con 264 donantes aplicados; los
+parches `0006`, `0007` y `0009` desaparecieron porque el donante ya aportaba esos cambios.
+Los 7 parches resultantes pasan `git apply --check` en orden sobre ese árbol.
+El log del primer fallo está en el artefacto `xnu-a03-build-log` del run `45080969152`.
 
 ## 7. Andamiaje creado
 
@@ -130,13 +150,10 @@ xnu/patches-a03/0002-a03-board-header.patch         A03.h, board_config, MMU_CLI
 xnu/patches-a03/0003-a03-gic-v3-timer.patch         GIC Group 1 NS, INTID 27, sleh_irq
 xnu/patches-a03/0004-a03-master-config.patch        MASTER.arm64.a03, nos_arm_asm/nos_arm_pmap
 xnu/patches-a03/0005-a03-early-framebuffer.patch    banda magenta + consola de etapas
-xnu/patches-a03/0006-a03-stub-apple-internal-headers.patch
-xnu/patches-a03/0007-a03-drop-apple-soc-exports.patch
 xnu/patches-a03/0008-a03-device-tree-platform-expert.patch
-xnu/patches-a03/0009-a03-ramdisk-root-fixes.patch
 xnu/patches-a03/0010-a03-platform-stubs.patch
-xnu/tools/gen_a03_patches.py                        regenerador desde xnu-src
-xnu/tools/verify_a03_patches.sh                     git apply en orden sobre copia limpia
+xnu/tools/gen_a03_patches.py                        regenerador con A03_XNU_ROOT
+xnu/tools/verify_a03_patches.sh                     git apply sobre el árbol donante
 xnu/stage-a03.py                                    staging en darwin-xnu-build
 xnu/README.md                                       toolchain, datos y trabajo pendiente
 ```
@@ -149,6 +166,7 @@ framebuffer vía `pe_serial.c`) y el 5 (eMMC/ramdisk) siguen pendientes.
 sin cambios desde el 20/11): no hace falta restaurarlo después de la última prueba Mach-O.
 
 **Honestidad:** hoy no existe XNU compilado para T606. Lo que existe es un cargador Mach-O
-funcional, una serie de diez parches que `git apply` acepta limpiamente y un plan de plataforma
-basado en datos reales del DTB. Los parches **no** han sido compilados (no hay Xcode/KDK aquí) y
-parte de la serie de Bergamota todavía es necesaria para que el build enlace.
+funcional, una serie de siete parches que `git apply` acepta limpiamente **después** de los
+donantes, y un plan de plataforma basado en datos reales del DTB. Los parches **no** han sido
+compilados (no hay Xcode/KDK aquí) y la serie completa de Bergamota sigue siendo necesaria para
+que el build enlace.

@@ -1,6 +1,6 @@
 # Andamiaje de build: XNU 12377.121.6 para A03 / T606
 
-Estado: **parches generados y verificados para aplicar; kernel NO compilado ni probado.**
+Estado: **7 parches generados contra el árbol con los donantes de Bergamota aplicados y verificados con `git apply`; kernel NO compilado ni probado.**
 
 Todo lo de aquí es texto fuente. No hay binarios de Apple, kernelcache, KDK,
 IPSW ni parches de terceros vendorizados en este repo.
@@ -14,13 +14,14 @@ IPSW ni parches de terceros vendorizados en este repo.
 | `patches-a03/0003-a03-gic-v3-timer.patch` | GICv3 Group 1 NS, timer INTID 27, SGI 1, `sleh_irq` |
 | `patches-a03/0004-a03-master-config.patch` | `config/MASTER.arm64.a03` con `nos_arm_asm`/`nos_arm_pmap` |
 | `patches-a03/0005-a03-early-framebuffer.patch` | banda magenta en `start.s`, consola de etapas en `0x9E000000`, hook de panic |
-| `patches-a03/0006-a03-stub-apple-internal-headers.patch` | stubs de `sart.h`, `uat.h`, `tunables.s` ausentes en el drop OSS |
-| `patches-a03/0007-a03-drop-apple-soc-exports.patch` | quita exportaciones de DART/IOMMU/SART/UAT/Tightbeam |
 | `patches-a03/0008-a03-device-tree-platform-expert.patch` | `A03PlatformExpert`, `IONameMatch='sprd,ums9230'` |
-| `patches-a03/0009-a03-ramdisk-root-fixes.patch` | `mockfs` y `setRootMedia` sin IOStorageFamily |
 | `patches-a03/0010-a03-platform-stubs.patch` | `ml_device_is_prod_fused`, guard de Tightbeam |
-| `tools/gen_a03_patches.py` | regenera los parches desde `../xnu-src` (fuente open-source clonada aparte) |
-| `tools/verify_a03_patches.sh` | aplica la serie en orden a una copia limpia del árbol |
+| `tools/gen_a03_patches.py` | regenera los parches; `A03_XNU_ROOT` apunta al árbol ya parcheado por Bergamota |
+| `tools/verify_a03_patches.sh` | aplica la serie en orden sobre una copia del árbol donante |
+
+Los parches `0006`, `0007` y `0009` ya no se generan: Bergamota aporta los stubs
+de headers internos, recorta las exportaciones y corrige `mockfs`/`IOService`
+para SWEET, así que regenerarlos producía diffs vacíos o rechazados.
 | `stage-a03.py` | copia la serie a `darwin-xnu-build/patches/26.0` con prefijo `9000-a03-` |
 
 ## Datos de plataforma usados
@@ -40,8 +41,10 @@ CPU                4x A75 + 4x A55, ARMv8.2-A, sin PAC
 ## Verificación local reproducible
 
 ```bash
-python3 xnu/tools/gen_a03_patches.py
-bash    xnu/tools/verify_a03_patches.sh
+# 1. Preparar localmente el árbol con los 264 parches donantes aplicados.
+#    (solo para regenerar; el runner lo hace dentro de darwin-xnu-build)
+A03_XNU_ROOT=/ruta/xnu-donor-tree python3 xnu/tools/gen_a03_patches.py
+A03_XNU_ROOT=/ruta/xnu-donor-tree bash    xnu/tools/verify_a03_patches.sh
 ```
 
 La verificación solo prueba que `git apply` acepta la serie en orden; **no
@@ -65,18 +68,19 @@ Linux. No hay Docker ni QEMU locales.
 
 ## Lo que todavía falta (no está en estos parches)
 
-La serie A71/Bergamota tiene ~267 parches. Ya portados aquí: headers internos,
-exports, platform expert, ramdisk-root y stubs de machine routines. Siguen
-**sin portar**, como mínimo:
+La serie A71/Bergamota tiene ~267 parches y se descarga en el runner como
+donante; no se vendoriza. Aporta los huecos del KDK cerrado, headers internos,
+exports, `mockfs` y las correcciones de enlace de 12377. Nuestra serie A03
+añade la configuración de placa, GIC/timer, consola temprana y platform expert.
 
-- huecos del KDK cerrado (`0008` de Bergamota: KPC, exports), consola persistente tras TTBR0 (`0012`);
-- SMP por PSCI (`0065`) y `rtclock`/timer virtual (`0017`);
-- ramdisk como dispositivo virtual (`0024`) y montaje real de root;
-- RNG sin CoreCrypto (`0013`, `0014`) y parches de enlace adicionales (`1001`+).
+Sigue **sin portar** específicamente para T606:
 
-Ese trabajo es el siguiente hito; estos cinco parches son solo la base de
-plataforma y la consola visual temprana. SpringBoard/iOS sigue fuera de alcance
-(sin SEP, keybags ni userland de Apple).
+- SMP por PSCI (`arm,psci-0.2`, `method=smc`) en lugar del SCM de Qualcomm;
+- clock/reset e eMMC/SDIO de Unisoc (el donante asume UFS);
+- persistencia de la consola tras TTBR0 y `kprintf` → framebuffer;
+- RNG sin CoreCrypto y eventual arranque de `init`.
+
+SpringBoard/iOS sigue fuera de alcance (sin SEP, keybags ni userland de Apple).
 
 ## Uso (en un Mac, cuando haya acceso)
 

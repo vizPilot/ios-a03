@@ -20,14 +20,14 @@ new file mode 100644
 diff --git a/osfmk/conf/files.arm64 b/osfmk/conf/files.arm64
 --- a/osfmk/conf/files.arm64
 +++ b/osfmk/conf/files.arm64
-@@ -54,6 +54,7 @@
+@@ -55,6 +55,7 @@
  osfmk/arm/arm_init.c	optional config_pmap_ppl
  osfmk/arm64/arm_vm_init.c	optional config_pmap_ppl
  osfmk/arm64/a03_early.c		standard
 +osfmk/arm64/a03_platform_stubs.c	standard
+ osfmk/arm64/sweet_early.c	standard
+ osfmk/arm64/sweet_platform_stubs.c	standard
  osfmk/arm64/arm64_hypercall.c	standard
- osfmk/arm/io_map.c		standard
- osfmk/arm64/loose_ends.c	standard
 diff --git a/osfmk/kern/exclaves.c b/osfmk/kern/exclaves.c
 --- a/osfmk/kern/exclaves.c
 +++ b/osfmk/kern/exclaves.c

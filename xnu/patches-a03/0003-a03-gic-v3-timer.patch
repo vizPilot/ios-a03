@@ -1,10 +1,10 @@
 diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
 --- a/pexpert/arm/pe_fiq.c
 +++ b/pexpert/arm/pe_fiq.c
-@@ -141,11 +141,24 @@
- 		}
+@@ -177,11 +177,24 @@
  	}
- 
+ 	gicr_write32(GICR_ISENABLER0, (1U << sweet_vtimer_intid) | (1U << SWEET_IPI_SGI));
+ #else
 +#if defined(A03)
 +	/*
 +	 * TrustZone owns Group 0 on the T606; non-secure writes to it are
@@ -23,25 +23,25 @@ diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
  	// Enable PPI 27
  	gicr_write32(GICR_ISENABLER0, (1 << 27));
 +#endif /* A03 */
+ #endif /* SWEET */
  
  	// Enable system register access
- 	uint64_t icc_sre = __builtin_arm_rsr64("ICC_SRE_EL1");
-@@ -154,7 +167,11 @@
- 	__builtin_arm_isb(ISB_SY);
- 
+@@ -194,7 +207,11 @@
+ 	__builtin_arm_wsr64("ICC_BPR1_EL1", 0);
+ #else
  	// Set priority masks and binary point for group 0
 +#if defined(A03)
 +	__builtin_arm_wsr64("ICC_BPR1_EL1", 0);
 +#else
  	__builtin_arm_wsr64("ICC_BPR0_EL1", 0);
 +#endif /* A03 */
+ #endif /* SWEET */
  	__builtin_arm_wsr64("ICC_PMR_EL1", 0xFF);
  
- 	// Set EOI mode of this processor
-@@ -162,12 +179,24 @@
- 	icc_ctlr &= ~ICC_CTLR_EOIMODE;
- 	__builtin_arm_wsr64("ICC_CTLR_EL1", icc_ctlr);
- 
+@@ -214,12 +231,24 @@
+ 	__builtin_arm_wsr64("ICC_IGRPEN1_EL1", 1);
+ 	__builtin_arm_isb(ISB_SY);
+ #else
 +#if defined(A03)
 +	/* LK/ABL leaves only ARE_NS set; enable both non-secure groups. */
 +	uint32_t gicd_ctlr = gicd_read32(GICD_CTLR);
@@ -60,9 +60,9 @@ diff --git a/pexpert/arm/pe_fiq.c b/pexpert/arm/pe_fiq.c
  	__builtin_arm_wsr64("ICC_IGRPEN0_EL1", 1);
  	__builtin_arm_isb(ISB_SY);
 +#endif /* A03 */
+ #endif /* SWEET */
  }
  #else
- void
 diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
 --- a/osfmk/arm64/sleh.c
 +++ b/osfmk/arm64/sleh.c
@@ -71,13 +71,13 @@ diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
  #include <arm/rtclock.h>
  #include <arm/trap_internal.h> /* for IS_ARM_GDB_TRAP() et al */
 +#include <arm/machine_cpu.h>
+ #include <arm/machine_cpu.h>
  #include <arm64/proc_reg.h>
  #include <arm64/machine_machdep.h>
- #include <kern/cpc.h>
-@@ -3008,6 +3009,39 @@
- #endif
- 
- 
+@@ -3204,6 +3205,39 @@
+ 	}
+ 	__builtin_arm_isb(ISB_SY);
+ #else
 +#if defined(A03)
 +	/* GIC Group 1 NS: timer, SGIs and every device interrupt land here. */
 +	uint64_t iar = __builtin_arm_rsr64("ICC_IAR1_EL1");
@@ -114,28 +114,28 @@ diff --git a/osfmk/arm64/sleh.c b/osfmk/arm64/sleh.c
  	sleh_interrupt_handler_prologue(state, DBG_INTR_TYPE_OTHER);
  
  #if USE_APPLEARMSMP
-@@ -3019,6 +3053,7 @@
+@@ -3215,6 +3249,7 @@
  	    cdp->interrupt_nub,
  	    cdp->interrupt_source);
  #endif
 +#endif /* A03 */
+ #endif /* SWEET */
  
  	entropy_collect();
- 
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -752,11 +752,11 @@
+@@ -844,11 +844,11 @@
  	MSR_SCTLR_EL1_X0
  	isb		sy
  
--#if !VMAPPLE
-+#if !VMAPPLE && !defined(A03)
+-#if !VMAPPLE && !defined(SWEET)
++#if !VMAPPLE && !defined(SWEET) && !defined(A03)
  	MOV64	x1, SCTLR_EL1_DEFAULT
  	cmp		x0, x1
  	bne		.
--#endif /* !VMAPPLE */
-+#endif /* !VMAPPLE && !A03 */
+-#endif /* !VMAPPLE && !SWEET */
++#endif /* !VMAPPLE && !SWEET && !A03 */
  
  #if (!CONFIG_KERNEL_INTEGRITY || (CONFIG_KERNEL_INTEGRITY && !defined(KERNEL_INTEGRITY_WT)))
  	/* Watchtower

@@ -141,21 +141,19 @@ new file mode 100644
 diff --git a/osfmk/conf/files.arm64 b/osfmk/conf/files.arm64
 --- a/osfmk/conf/files.arm64
 +++ b/osfmk/conf/files.arm64
-@@ -38,7 +38,8 @@
- osfmk/arm64/amcc_rorgn_ppl.c optional nos_arm_asm config_pmap_ppl
+@@ -39,6 +39,7 @@
  osfmk/arm64/amcc_rorgn_ppl_amcc.c optional nos_arm_asm config_pmap_ppl
  osfmk/arm64/amcc_rorgn_common.c optional nos_arm_asm
--osfmk/arm64/amcc_rorgn_pv_ctrr.c optional nos_arm_asm
-+# A03: amcc_rorgn_pv_ctrr.c (Apple paravirtualized CTRR) is not published in xnu-12377.121.6
-+# osfmk/arm64/amcc_rorgn_pv_ctrr.c optional nos_arm_asm
+ # SWEET: amcc_rorgn_pv_ctrr.c (paravirtualized CTRR, Apple VMs) is listed but not published in xnu-12377.121.6
++# # A03: amcc_rorgn_pv_ctrr.c (Apple paravirtualized CTRR) is not published in xnu-12377.121.6
+ # osfmk/arm64/amcc_rorgn_pv_ctrr.c optional nos_arm_asm
  osfmk/arm64/bcopy.s standard
  osfmk/arm64/bzero.s standard
- osfmk/arm/caches.c		standard
-@@ -52,6 +53,7 @@
+@@ -53,6 +54,7 @@
  osfmk/arm/arm_timer.c		standard
  osfmk/arm/arm_init.c	optional config_pmap_ppl
  osfmk/arm64/arm_vm_init.c	optional config_pmap_ppl
 +osfmk/arm64/a03_early.c		standard
+ osfmk/arm64/sweet_early.c	standard
+ osfmk/arm64/sweet_platform_stubs.c	standard
  osfmk/arm64/arm64_hypercall.c	standard
- osfmk/arm/io_map.c		standard
- osfmk/arm64/loose_ends.c	standard

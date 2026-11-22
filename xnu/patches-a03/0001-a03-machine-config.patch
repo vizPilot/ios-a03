@@ -5,56 +5,53 @@ diff --git a/makedefs/MakeInc.def b/makedefs/MakeInc.def
  else ifneq ($(findstring _host,$(RC_ProjectName)),)
  SUPPORTED_ARM64_MACHINE_CONFIGS = NONE
  else
--SUPPORTED_ARM64_MACHINE_CONFIGS = T6000 T6020 T6030 T6031 T6041 T6050 T8101 T8103 T8112 T8122 T8132 T8142 VMAPPLE
-+SUPPORTED_ARM64_MACHINE_CONFIGS = T6000 T6020 T6030 T6031 T6041 T6050 T8101 T8103 T8112 T8122 T8132 T8142 VMAPPLE A03
+-SUPPORTED_ARM64_MACHINE_CONFIGS = T6000 T6020 T6030 T6031 T6041 T6050 T8101 T8103 T8112 T8122 T8132 T8142 VMAPPLE SWEET
++SUPPORTED_ARM64_MACHINE_CONFIGS = T6000 T6020 T6030 T6031 T6041 T6050 T8101 T8103 T8112 T8122 T8132 T8142 VMAPPLE SWEET A03
  
  SPTM_ENABLED_SOCS_MacOSX = t6000 t8112 t6020 t8122 t6030 t6031 t6041 t6050 t8132 t8142
  EXCLAVES_ENABLED_SOCS_MacOSX = t8142 t6050
-@@ -93,6 +93,7 @@
- MACHINE_FLAGS_ARM64_T8142 = -DARM64_BOARD_CONFIG_T8142 			-mcpu=apple-m4+memtag+predres2
+@@ -94,6 +94,7 @@
  
  MACHINE_FLAGS_ARM64_VMAPPLE = -DARM64_BOARD_CONFIG_VMAPPLE              -march=armv8.5a+sme2
+ MACHINE_FLAGS_ARM64_SWEET = -DARM64_BOARD_CONFIG_SWEET                -march=armv8.2-a+crypto
 +MACHINE_FLAGS_ARM64_A03 = -DARM64_BOARD_CONFIG_A03                -march=armv8.2-a+crypto
  
  
  #
-@@ -370,7 +371,11 @@
+@@ -371,8 +372,8 @@
  # Without embdedded device map, use a default arch string
  export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := $(shell echo $(CURRENT_ARCH_CONFIG) | tr A-Z a-z)
  ifneq ($(filter arm64,$(ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG)),)
-+ifneq ($(CURRENT_MACHINE_CONFIG),A03)
+-# sweet's Cortex-A76/A55 have no pointer authentication: stay plain arm64
+-ifneq ($(CURRENT_MACHINE_CONFIG),SWEET)
++# sweet/a03 have no pointer authentication: stay plain arm64
++ifneq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)
  export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := arm64e
-+else
-+export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := arm64
-+endif
  endif
- 
  endif
-@@ -1150,8 +1155,9 @@
- LD_KERNEL_LIBS	   = -lcc_kext
- LD_KERNEL_ARCHIVES = $(LDFLAGS_KERNEL_SDK) -lfirehose_kernel
+@@ -1156,7 +1157,7 @@
  
--# Link binary support library
--ifneq ($(CURRENT_MACHINE_CONFIG),NONE)
-+# Link binary support library. A03 uses nos_arm_asm/nos_arm_pmap, so there is no
-+# KDK lib<A03>.os.<config>.a to force-load.
-+ifneq ($(filter NONE A03,$(CURRENT_MACHINE_CONFIG)),)
+ # Link binary support library (the KDK's closed lib<SoC>.os.<config>.a). SWEET builds those objects from the
+ # open-source asm/pmap instead (nos_arm_asm, nos_arm_pmap; MASTER.arm64.sweet) and the KDK has no libSWEET.
+-ifeq ($(filter NONE SWEET,$(CURRENT_MACHINE_CONFIG)),)
++ifeq ($(filter NONE SWEET A03,$(CURRENT_MACHINE_CONFIG)),)
          LDFLAGS_KERNEL_ONLY += -rdynamic -Wl,-force_load,$(KDKROOT)/System/Library/KernelSupport/lib$(CURRENT_MACHINE_CONFIG).os.$(CURRENT_KERNEL_CONFIG).a
  endif
  
-@@ -1190,6 +1196,7 @@
- endif # !EXCLAVES_ENABLED
+@@ -1196,14 +1197,14 @@
  
  
-+ifneq ($(CURRENT_MACHINE_CONFIG),A03)
+ # SWEET: the KDK's libTightbeam.a is x86_64/arm64e only and SWEET has no exclaves; never link or export it.
+-ifneq ($(CURRENT_MACHINE_CONFIG),SWEET)
++ifneq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)
  ifneq ($(wildcard $(SDKROOT)/usr/local/lib/kernel/platform/libTightbeam.a),)
  XNU_CONFIG_TIGHTBEAM := 1
  TIGHTBEAM_IN_SDK := 1
-@@ -1206,6 +1213,7 @@
-     TIGHTBEAM_EXPORTS := $(KDKROOT)/usr/local/lib/kernel/platform/libTightbeam.exports
-   endif # TIGHTBEAM_IN_SDK
+ else ifneq ($(wildcard $(KDKROOT)/usr/local/lib/kernel/platform/libTightbeam.a),)
+ XNU_CONFIG_TIGHTBEAM := 1
  endif
-+endif # !A03
- 
- #
- # DTrace support
+-endif # !SWEET
++endif # !SWEET/A03
+ ifeq ($(XNU_CONFIG_TIGHTBEAM),1)
+   ifeq ($(TIGHTBEAM_IN_SDK),1)
+     # Force-import the Tightbeam static lib so that all of its symbols can be exported to kexts

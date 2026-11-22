@@ -9,11 +9,13 @@ fed to `git apply`. Run with:
 """
 
 from pathlib import Path
+import argparse
 import difflib
+import os
 
 HERE = Path(__file__).resolve().parent
-ROOT = HERE.parent.parent / "xnu-src"
-OUT = HERE.parent / "patches-a03"
+ROOT = Path(os.environ.get("A03_XNU_ROOT", str(HERE.parent.parent / "xnu-src")))
+OUT = Path(os.environ.get("A03_PATCH_OUT", str(HERE.parent / "patches-a03")))
 OUT.mkdir(parents=True, exist_ok=True)
 
 
@@ -27,7 +29,12 @@ class State:
         return self.files[rel]
 
     def patch(self, name, edits):
-        """edits: list of (relative path, old text, new text); old == '' creates a file."""
+        """edits: list of (relative path, old text, new text); old == '' creates a file.
+
+        When generating against a donor-patched tree, an edit whose context is
+        already absent (or whose file already exists) is skipped with a warning:
+        Bergamota may have applied the equivalent change for SWEET already.
+        """
         order = []
         grouped = {}
         for rel, old, new in edits:
@@ -38,15 +45,23 @@ class State:
 
         chunks = []
         for rel in order:
-            original = "" if grouped[rel][0][0] == "" else self.read(rel)
+            exists = (ROOT / rel).exists()
+            original = self.read(rel) if exists else ""
             current = original
+            applied = 0
             for old, new in grouped[rel]:
-                if old and old not in current:
-                    raise SystemExit(f"{name}: context not found in {rel}:\n{old[:200]}")
-                if old == "" and rel in self.files:
-                    raise SystemExit(f"{name}: file already exists: {rel}")
+                if old == "":
+                    if exists or rel in self.files and (ROOT / rel).exists():
+                        print(f"  skip {name}: {rel} already exists (donant)")
+                        continue
+                elif old not in current:
+                    print(f"  skip {name}: context absent in {rel}")
+                    continue
                 current = current.replace(old, new, 1) if old else new
+                applied += 1
             self.files[rel] = current
+            if applied == 0:
+                continue
             header = f"diff --git a/{rel} b/{rel}\n"
             if original == "":
                 header += "new file mode 100644\n"
@@ -70,41 +85,36 @@ s = State()
 # ---------------------------------------------------------------------------
 s.patch("0001-a03-machine-config.patch", [
     ("makedefs/MakeInc.def",
-     "SUPPORTED_ARM64_MACHINE_CONFIGS = T6000 T6020 T6030 T6031 T6041 T6050 T8101 T8103 T8112 T8122 T8132 T8142 VMAPPLE",
-     "SUPPORTED_ARM64_MACHINE_CONFIGS = T6000 T6020 T6030 T6031 T6041 T6050 T8101 T8103 T8112 T8122 T8132 T8142 VMAPPLE A03"),
+     "SUPPORTED_ARM64_MACHINE_CONFIGS = T6000 T6020 T6030 T6031 T6041 T6050 T8101 T8103 T8112 T8122 T8132 T8142 VMAPPLE SWEET",
+     "SUPPORTED_ARM64_MACHINE_CONFIGS = T6000 T6020 T6030 T6031 T6041 T6050 T8101 T8103 T8112 T8122 T8132 T8142 VMAPPLE SWEET A03"),
 
     ("makedefs/MakeInc.def",
-     "MACHINE_FLAGS_ARM64_VMAPPLE = -DARM64_BOARD_CONFIG_VMAPPLE              -march=armv8.5a+sme2\n",
-     "MACHINE_FLAGS_ARM64_VMAPPLE = -DARM64_BOARD_CONFIG_VMAPPLE              -march=armv8.5a+sme2\n"
+     "MACHINE_FLAGS_ARM64_SWEET = -DARM64_BOARD_CONFIG_SWEET                -march=armv8.2-a+crypto\n",
+     "MACHINE_FLAGS_ARM64_SWEET = -DARM64_BOARD_CONFIG_SWEET                -march=armv8.2-a+crypto\n"
      "MACHINE_FLAGS_ARM64_A03 = -DARM64_BOARD_CONFIG_A03                -march=armv8.2-a+crypto\n"),
 
     # Cortex-A75/A55 have no pointer authentication: keep the Mach-O slice as plain arm64.
+    # Bergamota already special-cases SWEET here; add A03 to that condition.
     ("makedefs/MakeInc.def",
-     "ifneq ($(filter arm64,$(ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG)),)\nexport ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := arm64e\nendif\n",
-     "ifneq ($(filter arm64,$(ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG)),)\n"
-     "ifneq ($(CURRENT_MACHINE_CONFIG),A03)\n"
-     "export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := arm64e\n"
-     "else\n"
-     "export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := arm64\n"
-     "endif\n"
-     "endif\n"),
+     "# sweet's Cortex-A76/A55 have no pointer authentication: stay plain arm64\n"
+     "ifneq ($(CURRENT_MACHINE_CONFIG),SWEET)\n",
+     "# sweet/a03 have no pointer authentication: stay plain arm64\n"
+     "ifneq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)\n"),
 
     # No closed KDK SoC archive exists for a Unisoc board; A03 builds the
     # open-source asm/pmap instead (see MASTER.arm64.a03).
     ("makedefs/MakeInc.def",
-     "# Link binary support library\nifneq ($(CURRENT_MACHINE_CONFIG),NONE)\n",
-     "# Link binary support library. A03 uses nos_arm_asm/nos_arm_pmap, so there is no\n"
-     "# KDK lib<A03>.os.<config>.a to force-load.\n"
-     "ifneq ($(filter NONE A03,$(CURRENT_MACHINE_CONFIG)),)\n"),
+     "ifeq ($(filter NONE SWEET,$(CURRENT_MACHINE_CONFIG)),)\n",
+     "ifeq ($(filter NONE SWEET A03,$(CURRENT_MACHINE_CONFIG)),)\n"),
 
     # Tightbeam is arm64e/Apple-only and A03 has no exclaves.
     ("makedefs/MakeInc.def",
-     "ifneq ($(wildcard $(SDKROOT)/usr/local/lib/kernel/platform/libTightbeam.a),)\n",
-     "ifneq ($(CURRENT_MACHINE_CONFIG),A03)\n"
+     "ifneq ($(CURRENT_MACHINE_CONFIG),SWEET)\nifneq ($(wildcard $(SDKROOT)/usr/local/lib/kernel/platform/libTightbeam.a),)\n",
+     "ifneq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)\n"
      "ifneq ($(wildcard $(SDKROOT)/usr/local/lib/kernel/platform/libTightbeam.a),)\n"),
     ("makedefs/MakeInc.def",
-     "  endif # TIGHTBEAM_IN_SDK\nendif\n",
-     "  endif # TIGHTBEAM_IN_SDK\nendif\nendif # !A03\n"),
+     "endif # !SWEET\n",
+     "endif # !SWEET/A03\n"),
 ])
 
 # ---------------------------------------------------------------------------
@@ -207,8 +217,8 @@ s.patch("0002-a03-board-header.patch", [
      "#ifdef ARM64_BOARD_CONFIG_VMAPPLE\n#include <pexpert/arm64/VMAPPLE.h>\n"),
 
     ("pexpert/pexpert/arm64/Makefile",
-     "\tH17.h \\\n\tVMAPPLE.h\n",
-     "\tH17.h \\\n\tVMAPPLE.h \\\n\tA03.h\n"),
+     "\tH17.h \\\n\tVMAPPLE.h \\\n\tSWEET.h",
+     "\tH17.h \\\n\tVMAPPLE.h \\\n\tSWEET.h \\\n\tA03.h"),
 
     ("osfmk/arm64/proc_reg.h",
      "#elif defined (VMAPPLE)\n\n/* I-Cache. */\n",
@@ -325,24 +335,26 @@ s.patch("0003-a03-gic-v3-timer.patch", [
 
     ("osfmk/arm64/sleh.c",
      "\t    cdp->interrupt_source);\n"
-     "#endif\n\n"
+     "#endif\n"
+     "#endif /* SWEET */\n\n"
      "\tentropy_collect();\n",
      "\t    cdp->interrupt_source);\n"
      "#endif\n"
-     "#endif /* A03 */\n\n"
+     "#endif /* A03 */\n"
+     "#endif /* SWEET */\n\n"
      "\tentropy_collect();\n"),
 
     ("osfmk/arm64/start.s",
-     "#if !VMAPPLE\n"
+     "#if !VMAPPLE && !defined(SWEET)\n"
      "\tMOV64\tx1, SCTLR_EL1_DEFAULT\n"
      "\tcmp\t\tx0, x1\n"
      "\tbne\t\t.\n"
-     "#endif /* !VMAPPLE */\n",
-     "#if !VMAPPLE && !defined(A03)\n"
+     "#endif /* !VMAPPLE && !SWEET */\n",
+     "#if !VMAPPLE && !defined(SWEET) && !defined(A03)\n"
      "\tMOV64\tx1, SCTLR_EL1_DEFAULT\n"
      "\tcmp\t\tx0, x1\n"
      "\tbne\t\t.\n"
-     "#endif /* !VMAPPLE && !A03 */\n"),
+     "#endif /* !VMAPPLE && !SWEET && !A03 */\n"),
 ])
 
 # ---------------------------------------------------------------------------
@@ -549,7 +561,7 @@ s.patch("0005-a03-early-framebuffer.patch", [
 
     # Stage 0: a magenta band at the bottom of the screen. No stack, no tables.
     ("osfmk/arm64/start.s",
-     "\tmov\t\tx20, x0\n\tmov\t\tx21, #0\n\n\t// Set low reset vector before attempting any loads\n",
+     "\tmov\t\tx20, x0\n\tmov\t\tx21, #0\n\n#if defined(SWEET)\n",
      "\tmov\t\tx20, x0\n\tmov\t\tx21, #0\n\n"
      "#if defined(A03)\n"
      "\t/* Stage 0: 80x32 magenta band; needs neither stack nor page tables. */\n"
@@ -572,9 +584,8 @@ s.patch("0005-a03-early-framebuffer.patch", [
 
     # Add the framebuffer to the existing V=P L2 table. RAM and FB share L1.
     ("osfmk/arm64/start.s",
-     "\tcreate_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13\n\n"
-     "\t/* Ensure TTEs are visible */\n",
-     "\tcreate_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13\n\n"
+     "\tcreate_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13\n\n#if defined(SWEET)\n",
+     "\tcreate_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13\n\n#if defined(SWEET)\n"
      "#if defined(A03)\n"
      "\t/*\n"
      "\t * Splash FB: one Normal-NC block in the existing V=P L2 table.\n"
@@ -589,7 +600,8 @@ s.patch("0005-a03-early-framebuffer.patch", [
      "\tlsr\t\tx12, x12, #(ARM_TT_L2_SHIFT)\n"
      "\tadd\t\tx13, x25, #(2 * PGBYTES)\n"
      "\tstr\t\tx11, [x13, x12, lsl #TTE_SHIFT]\n"
-     "#endif /* A03 */\n\n"
+     "#endif /* A03 */\n"
+     "#endif /* SWEET */\n\n"
      "\t/* Ensure TTEs are visible */\n"),
 
     ("osfmk/arm/arm_init.c",
