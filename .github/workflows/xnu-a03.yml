@@ -1,0 +1,108 @@
+name: A03 XNU 26
+
+on:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: macOS runner for the XNU build
+        default: macos-15-intel
+      keep_going:
+        description: make -k (collect all compile errors in one run)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  DXB_SHA: 663906528d1cd5ea8fde7de6f16de73db9511549
+  BERGAMOTA_SHA: 37a7a7a917fc09945ed2f7d1ae68b84d4525b4cb
+  MACOS_VERSION: "26.5"
+  KERNEL_CONFIG: DEVELOPMENT
+  MACHINE_CONFIG: A03
+  LC_ALL: C
+
+jobs:
+  build:
+    runs-on: ${{ inputs.runner }}
+    timeout-minutes: 135
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Stage XNU build dependencies and patches
+        run: |
+          set -e
+          git init -q dxb
+          git -C dxb fetch -q --depth 1 https://github.com/blacktop/darwin-xnu-build "$DXB_SHA"
+          git -C dxb checkout -q --detach FETCH_HEAD
+          git init -q berg
+          git -C berg fetch -q --depth 1 https://github.com/ry-diffusion/Bergamota "$BERGAMOTA_SHA"
+          git -C berg checkout -q --detach FETCH_HEAD
+          python3 xnu/stage-a03.py --builder dxb --donor berg
+          ls dxb/patches/26.0 | tail -20
+
+      - name: Select Xcode and install build tools
+        run: |
+          set -e
+          xc=$(find /Applications -maxdepth 1 -name 'Xcode_26.1*.app' | sort -V | tail -1)
+          if [ -z "$xc" ]; then
+            xc=$(find /Applications -maxdepth 1 -name 'Xcode_26.*.app' | sort -V | head -1)
+          fi
+          test -n "$xc"
+          echo "DEVELOPER_DIR=$xc/Contents/Developer" >> "$GITHUB_ENV"
+          sudo xcode-select -s "$xc"
+          xcodebuild -version
+          brew install jq gum bash cmake ninja
+          if ! command -v xcodes >/dev/null; then
+            printf '#!/bin/sh\nexit 0\n' | sudo tee /usr/local/bin/xcodes >/dev/null
+            sudo chmod +x /usr/local/bin/xcodes
+          fi
+
+      - name: Build XNU 12377 for A03
+        working-directory: dxb
+        env:
+          MAKEFLAGS: ${{ inputs.keep_going && '-k' || '' }}
+        run: |
+          rc=0
+          bash build.sh > build.log 2>&1 || rc=$?
+          tail -80 build.log
+          if [ "$rc" -ne 0 ]; then
+            grep -aE 'error:|Required A03 patch rejected' build.log | tail -150 || true
+          fi
+          exit "$rc"
+
+      - name: Collect build log
+        if: always()
+        run: |
+          mkdir -p out
+          if [ -f dxb/build.log ]; then gzip -c dxb/build.log > out/build.log.gz; fi
+          if [ -f dxb/series-SHA256SUMS ]; then cp dxb/series-SHA256SUMS out/; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: xnu-a03-build-log
+          path: out/
+          if-no-files-found: warn
+
+      - name: Verify and publish kernel
+        run: |
+          set -e
+          src=dxb/fakeroot/System/Library/Kernels/kernel.development.a03
+          test -f "$src"
+          grep -aFq 'xnu-12377.121.6' "$src"
+          grep -aFq 'A03 EARLY' "$src"
+          cp "$src" out/
+          cp dxb/series-SHA256SUMS out/
+          (cd out && shasum -a 256 kernel.development.a03 > SHA256SUMS)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xnu-a03-kernel
+          path: |
+            out/kernel.development.a03
+            out/series-SHA256SUMS
+            out/SHA256SUMS
+          if-no-files-found: error

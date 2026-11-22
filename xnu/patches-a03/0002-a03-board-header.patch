@@ -1,0 +1,135 @@
+diff --git a/pexpert/pexpert/arm64/A03.h b/pexpert/pexpert/arm64/A03.h
+new file mode 100644
+--- /dev/null
++++ b/pexpert/pexpert/arm64/A03.h
+@@ -0,0 +1,78 @@
++/*
++ * Board config for the Samsung Galaxy A03 (SM-A035M), Unisoc T606 / UMS9230:
++ * 4x Cortex-A75 + 4x Cortex-A55, ARMv8.2-A, no PAC, GICv3, architected timer.
++ *
++ * This is a generic ARM64 platform, not an Apple ARM64 family: none of the
++ * Apple implementation-defined system registers exist here. Like VMAPPLE we
++ * use the architected timer and GICv3; unlike VMAPPLE the GIC has two security
++ * states, so Group 0 belongs to TrustZone and everything we own is Group 1 NS.
++ */
++
++#ifndef _PEXPERT_ARM64_A03_H
++#define _PEXPERT_ARM64_A03_H
++
++#define A03                       1
++
++#define NO_MONITOR                1
++#define NO_ECORE                  1
++
++#define ARM_ARCH_TIMER
++#define __ARM_ARCH__              8
++#define __ARM_VMSA__              8
++#define __ARM_VFP__               4
++#define __ARM_COHERENT_CACHE__    1
++#define __ARM_DEBUG__             7
++#define __ARM_ENABLE_SWAP__       1
++#define __ARM_V8_CRYPTO_EXTENSIONS__ 1
++#define __ARM_PAN_AVAILABLE__     1
++#define __ARM_16K_PG__            1
++
++#define HAS_GIC_V3                1
++
++/* apple_arm64_cpu.h is included unconditionally by several arm64 files. */
++#define MPIDR_CORETYPE_SHIFT      (16)
++#define MPIDR_CORETYPE_WIDTH      (3)
++#define MPIDR_CORETYPE_MASK       ((1ULL << MPIDR_CORETYPE_WIDTH) - 1)
++#define MPIDR_CORETYPE_ACC_E      (0ULL)
++#define MPIDR_CORETYPE_ACC_P      (1ULL)
++#define MPIDR_CORETYPE_ACC_M      (4ULL)
++
++#ifndef ASSEMBLER
++#define PLATFORM_PANIC_LOG_DISABLED
++#endif /* !ASSEMBLER */
++
++/* DTB: timer interrupts = 13,14,11,10 => virtual timer is PPI 11 => INTID 27. */
++#define A03_VTIMER_INTID          27
++#define A03_IPI_SGI               1
++
++#define GIC_SPURIOUS_IRQ          1023
++#define GICR_PE_SIZE              0x20000
++
++/* GICv3 register offsets (Arm IHI 0069G). */
++#define GICD_CTLR                 0x0
++#define GICD_CTLR_ENABLEGRP1      0x1
++#define GICD_CTLR_ENABLEGRP1A     0x2
++#define GICD_CTLR_ARE_NS          0x10
++#define GICD_CTLR_RWP             0x80000000
++
++#define GICR_TYPER                0x08
++#define GICR_WAKER                0x14
++#define GICR_IGROUPR0             0x10080
++#define GICR_ISENABLER0           0x10100
++#define GICR_IPRIORITYR0          0x10400
++
++#define GICR_TYPER_AFFINITY_VALUE_SHIFT 32
++#define GICR_TYPER_LAST           0x10
++#define GICR_WAKER_PROCESSORSLEEP 0x2
++#define GICR_WAKER_CHILDRENASLEEP 0x4
++
++#define ICC_CTLR_EOIMODE          0x2
++#define ICC_SRE_SRE               0x1
++
++/* Calibrated boot framebuffer: 32bpp BGRA, A=0xff, stride 2880 bytes. */
++#define A03_FB_PHYS               0x9E000000u
++#define A03_FB_WIDTH              720u
++#define A03_FB_HEIGHT             1600u
++#define A03_FB_STRIDE             2880u
++
++#endif /* !_PEXPERT_ARM64_A03_H */
+diff --git a/pexpert/pexpert/arm64/board_config.h b/pexpert/pexpert/arm64/board_config.h
+--- a/pexpert/pexpert/arm64/board_config.h
++++ b/pexpert/pexpert/arm64/board_config.h
+@@ -304,6 +304,19 @@
+ 
+ 
+ 
++#ifdef ARM64_BOARD_CONFIG_A03
++#include <pexpert/arm64/A03.h>
++
++#define MAX_L2_CLINE                   6
++#define MAX_CPUS                       8
++#define MAX_CPU_CLUSTERS               1
++
++#define CORE_NCTRS                     8 /* Placeholder; KPC is not enabled for this target */
++
++#endif  /* ARM64_BOARD_CONFIG_A03 */
++
++
++
+ #ifdef ARM64_BOARD_CONFIG_VMAPPLE
+ #include <pexpert/arm64/VMAPPLE.h>
+ 
+diff --git a/pexpert/pexpert/arm64/Makefile b/pexpert/pexpert/arm64/Makefile
+--- a/pexpert/pexpert/arm64/Makefile
++++ b/pexpert/pexpert/arm64/Makefile
+@@ -33,7 +33,8 @@
+ 	H15.h \
+ 	H16.h \
+ 	H17.h \
+-	VMAPPLE.h
++	VMAPPLE.h \
++	A03.h
+ 
+ 
+ # Headers installed into System.framework/PrivateHeaders (userspace internal SDK only).
+diff --git a/osfmk/arm64/proc_reg.h b/osfmk/arm64/proc_reg.h
+--- a/osfmk/arm64/proc_reg.h
++++ b/osfmk/arm64/proc_reg.h
+@@ -242,6 +242,12 @@
+ 
+ /* D-Cache, 128KB for Acc8 PCore, 8-way. 64KB for ECore, 8-way. */
+ #define MMU_CLINE   6                      /* cache line size is 1<<MMU_CLINE (64) */
++
++#elif defined (A03)
++
++/* Cortex-A75/A55: 64-byte I and D cache lines. */
++#define MMU_I_CLINE 6
++#define MMU_CLINE   6
+ 
+ #elif defined (VMAPPLE)
+ 

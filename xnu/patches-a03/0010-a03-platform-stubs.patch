@@ -1,0 +1,43 @@
+diff --git a/osfmk/arm64/a03_platform_stubs.c b/osfmk/arm64/a03_platform_stubs.c
+new file mode 100644
+--- /dev/null
++++ b/osfmk/arm64/a03_platform_stubs.c
+@@ -0,0 +1,14 @@
++/*
++ * Machine routines that xnu-12377 expects from Apple's closed per-SoC support
++ * library (KernelSupport/lib<SoC>.os.<config>.a), which A03 does not link.
++ */
++#include <arm/machine_routines.h>
++
++#if defined(ARM64_BOARD_CONFIG_A03)
++/* hw.features sysctl: no Apple fuses on this board. */
++boolean_t
++ml_device_is_prod_fused(void)
++{
++	return FALSE;
++}
++#endif /* ARM64_BOARD_CONFIG_A03 */
+diff --git a/osfmk/conf/files.arm64 b/osfmk/conf/files.arm64
+--- a/osfmk/conf/files.arm64
++++ b/osfmk/conf/files.arm64
+@@ -54,6 +54,7 @@
+ osfmk/arm/arm_init.c	optional config_pmap_ppl
+ osfmk/arm64/arm_vm_init.c	optional config_pmap_ppl
+ osfmk/arm64/a03_early.c		standard
++osfmk/arm64/a03_platform_stubs.c	standard
+ osfmk/arm64/arm64_hypercall.c	standard
+ osfmk/arm/io_map.c		standard
+ osfmk/arm64/loose_ends.c	standard
+diff --git a/osfmk/kern/exclaves.c b/osfmk/kern/exclaves.c
+--- a/osfmk/kern/exclaves.c
++++ b/osfmk/kern/exclaves.c
+@@ -73,7 +73,8 @@
+ /* External & generated headers */
+ #include <xrt_hosted_types/types.h>
+ 
+-#if __has_include(<Tightbeam/tightbeam.h>)
++/* A03: the KDK headers exist, but libTightbeam is not linked here. */
++#if __has_include(<Tightbeam/tightbeam.h>) && !defined(ARM64_BOARD_CONFIG_A03)
+ #include <Tightbeam/tightbeam.h>
+ #include <Tightbeam/tightbeam_private.h>
+ #endif

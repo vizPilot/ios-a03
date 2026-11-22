@@ -1,0 +1,115 @@
+diff --git a/iokit/Kernel/arm/A03PlatformExpert.cpp b/iokit/Kernel/arm/A03PlatformExpert.cpp
+new file mode 100644
+--- /dev/null
++++ b/iokit/Kernel/arm/A03PlatformExpert.cpp
+@@ -0,0 +1,82 @@
++/*
++ * Minimal device-tree platform expert for the Galaxy A03 (sprd,ums9230).
++ * Uses XNU's normal platform and nub initialization. Interrupt and power
++ * management services come from separate drivers.
++ */
++#include <pexpert/arm64/board_config.h>
++
++#if defined(A03)
++#include <IOKit/IOPlatformExpert.h>
++#include <IOKit/IODeviceTreeSupport.h>
++#include <IOKit/IOLib.h>
++
++class A03PlatformExpert : public IODTPlatformExpert {
++	OSDeclareDefaultStructors(A03PlatformExpert);
++
++public:
++	bool start(IOService *provider) APPLE_KEXT_OVERRIDE;
++	void processTopLevel(IORegistryEntry *root) APPLE_KEXT_OVERRIDE;
++	const char *deleteList(void) APPLE_KEXT_OVERRIDE;
++	const char *excludeList(void) APPLE_KEXT_OVERRIDE;
++	bool getTargetName(char *name, int maxLength) APPLE_KEXT_OVERRIDE;
++	bool getProductName(char *name, int maxLength) APPLE_KEXT_OVERRIDE;
++};
++
++OSDefineMetaClassAndStructors(A03PlatformExpert, IODTPlatformExpert);
++
++bool
++A03PlatformExpert::start(IOService *provider)
++{
++	IOLog("A03: starting device-tree platform expert\n");
++	if (!IODTPlatformExpert::start(provider)) {
++		return false;
++	}
++	registerService();
++	IOLog("A03: platform expert registered\n");
++	return true;
++}
++
++const char *
++A03PlatformExpert::deleteList(void)
++{
++	return "()";
++}
++
++const char *
++A03PlatformExpert::excludeList(void)
++{
++	return "('chosen', 'defaults', 'cpus', 'options')";
++}
++
++void
++A03PlatformExpert::processTopLevel(IORegistryEntry *root)
++{
++	/* No Apple NVRAM /options node on this board: publish the DT nodes as-is. */
++	IORegistryEntry *cpus = root->childFromPath("cpus", gIODTPlane);
++	if (cpus != NULL) {
++		createNubs(this, IODTFindMatchingEntries(cpus, kIODTExclusive, NULL));
++		cpus->release();
++	}
++	createNubs(this, IODTFindMatchingEntries(root, kIODTExclusive, excludeList()));
++}
++
++bool
++A03PlatformExpert::getTargetName(char *name, int maxLength)
++{
++	if (name == NULL || maxLength <= 0) {
++		return false;
++	}
++	strlcpy(name, "a03", (size_t)maxLength);
++	return true;
++}
++
++bool
++A03PlatformExpert::getProductName(char *name, int maxLength)
++{
++	if (name == NULL || maxLength <= 0) {
++		return false;
++	}
++	strlcpy(name, "Galaxy A03", (size_t)maxLength);
++	return true;
++}
++#endif /* A03 */
+diff --git a/iokit/KernelConfigTables.cpp b/iokit/KernelConfigTables.cpp
+--- a/iokit/KernelConfigTables.cpp
++++ b/iokit/KernelConfigTables.cpp
+@@ -34,6 +34,14 @@
+ 
+ const char * gIOKernelConfigTables =
+     "("
++#if defined(ARM64_BOARD_CONFIG_A03)
++    "   {"
++    "     'IOClass'         = A03PlatformExpert;"
++    "     'IOProviderClass' = IOPlatformExpertDevice;"
++    "     'IONameMatch'     = 'sprd,ums9230';"
++    "     'IOProbeScore'    = 10000:32;"
++    "   },"
++#endif
+     "   {"
+     "     'IOClass'         = IOPanicPlatform;"
+     "     'IOProviderClass' = IOPlatformExpertDevice;"
+diff --git a/iokit/conf/files.arm64 b/iokit/conf/files.arm64
+--- a/iokit/conf/files.arm64
++++ b/iokit/conf/files.arm64
+@@ -5,4 +5,6 @@
+ 
+ # SMP
+ iokit/Kernel/arm/AppleARMSMP.cpp    					optional iokitcpp
++# A03 device-tree platform (empty translation unit on other boards)
++iokit/Kernel/arm/A03PlatformExpert.cpp                         optional iokitcpp
+ 

@@ -1,0 +1,12 @@
+# Fuente de XNU clonada sólo para generar/verificar parches (115 MB).
+xnu-src/
+
+# Binarios de prueba, DTB con seriales y artefactos: nunca subir.
+*.img
+*.dtb
+*.dts
+*.bin
+*.macho
+*.gz
+*.tgz
+*.log

@@ -1,0 +1,326 @@
+diff --git a/osfmk/arm64/a03_early.h b/osfmk/arm64/a03_early.h
+new file mode 100644
+--- /dev/null
++++ b/osfmk/arm64/a03_early.h
+@@ -0,0 +1,22 @@
++/* Early screen diagnostics, valid only while the bootstrap TTBR0 is live. */
++#ifndef _ARM64_A03_EARLY_H_
++#define _ARM64_A03_EARLY_H_
++
++#include <pexpert/arm64/board_config.h>
++#include <stdarg.h>
++
++#if defined(A03)
++void a03_early_mark(unsigned int stage, const char *label);
++void a03_early_putc(char c);
++void a03_early_panic(const char *fmt, va_list *args);
++void a03_early_disable(void);
++#else
++static inline void a03_early_mark(unsigned int stage, const char *label)
++{
++	(void)stage;
++	(void)label;
++}
++static inline void a03_early_disable(void) {}
++#endif
++
++#endif /* !_ARM64_A03_EARLY_H_ */
+diff --git a/osfmk/arm64/a03_early.c b/osfmk/arm64/a03_early.c
+new file mode 100644
+--- /dev/null
++++ b/osfmk/arm64/a03_early.c
+@@ -0,0 +1,132 @@
++/*
++ * A03 bootstrap console. No allocation, locks, DT parsing or per-CPU state:
++ * panic() can reach this before a current thread exists. start.s maps the boot
++ * framebuffer VA=PA as Normal Non-Cacheable; this mapping dies with TTBR0.
++ */
++#include <arm64/a03_early.h>
++
++#if defined(A03)
++#include <stdint.h>
++#include <kern/misc_protos.h>
++
++#define EARLY_FB         ((volatile uint32_t *)(uintptr_t)A03_FB_PHYS)
++#define EARLY_WIDTH      A03_FB_WIDTH
++#define EARLY_HEIGHT     A03_FB_HEIGHT
++#define EARLY_STRIDE     (A03_FB_STRIDE / 4)
++#define EARLY_SCALE      2u
++#define EARLY_CELL_W     (8u * EARLY_SCALE)
++#define EARLY_CELL_H     (16u * EARLY_SCALE)
++#define EARLY_TOP        (EARLY_HEIGHT - 32u)
++#define EARLY_ROWS       (EARLY_TOP / EARLY_CELL_H)
++#define EARLY_COLS       (EARLY_WIDTH / EARLY_CELL_W)
++
++#define EARLY_FG         0xffffffffu   /* BGRA: white, A=0xff */
++#define EARLY_BG         0xff000000u   /* BGRA: black, A=0xff */
++
++extern unsigned char iso_font[256 * 16];
++
++static unsigned int early_row, early_col;
++static unsigned int early_started, early_disabled, early_panicking;
++
++static void
++a03_early_clear_row(void)
++{
++	for (unsigned int y = 0; y < EARLY_CELL_H; y++) {
++		volatile uint32_t *line = EARLY_FB + (early_row * EARLY_CELL_H + y) * EARLY_STRIDE;
++		for (unsigned int x = 0; x < EARLY_WIDTH; x++) {
++			line[x] = EARLY_BG;
++		}
++	}
++}
++
++void
++a03_early_putc(char c)
++{
++	if (early_disabled) {
++		return;
++	}
++	if (!early_started) {
++		early_started = 1;
++		a03_early_clear_row();
++	}
++	if (c == '\r') {
++		early_col = 0;
++		return;
++	}
++	if (c == '\n' || early_col == EARLY_COLS) {
++		early_col = 0;
++		early_row = (early_row + 1) % EARLY_ROWS;
++		a03_early_clear_row();
++		if (c == '\n') {
++			return;
++		}
++	}
++	const unsigned char *glyph = iso_font + (unsigned char)c * 16;
++	for (unsigned int gy = 0; gy < 16; gy++) {
++		for (unsigned int sy = 0; sy < EARLY_SCALE; sy++) {
++			volatile uint32_t *line = EARLY_FB +
++			    (early_row * EARLY_CELL_H + gy * EARLY_SCALE + sy) * EARLY_STRIDE +
++			    early_col * EARLY_CELL_W;
++			for (unsigned int gx = 0; gx < 8; gx++) {
++				uint32_t pixel = (glyph[gy] & (1u << gx)) ? EARLY_FG : EARLY_BG;
++				for (unsigned int sx = 0; sx < EARLY_SCALE; sx++) {
++					line[gx * EARLY_SCALE + sx] = pixel;
++				}
++			}
++		}
++	}
++	early_col++;
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
++static void
++a03_early_string(const char *str)
++{
++	while (*str) {
++		a03_early_putc(*str++);
++	}
++}
++
++void
++a03_early_mark(unsigned int stage, const char *label)
++{
++	if (early_disabled || stage > 8) {
++		return;
++	}
++	uint32_t color = 0xff00ff00u | (stage * 28u << 16);
++	for (unsigned int y = EARLY_TOP; y < EARLY_HEIGHT; y++) {
++		for (unsigned int x = stage * 80u; x < (stage + 1) * 80u; x++) {
++			EARLY_FB[y * EARLY_STRIDE + x] = color;
++		}
++	}
++	a03_early_string("A03 EARLY ");
++	a03_early_putc((char)('0' + stage));
++	a03_early_string(": ");
++	a03_early_string(label);
++	a03_early_putc('\n');
++}
++
++void
++a03_early_panic(const char *fmt, va_list *args)
++{
++	if (early_disabled || early_panicking) {
++		return;
++	}
++	early_panicking = 1;
++	a03_early_string("\nA03 EARLY PANIC: ");
++	va_list copy;
++	va_copy(copy, *args);
++	_doprnt(fmt, &copy, a03_early_putc, 16);
++	va_end(copy);
++	a03_early_putc('\n');
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++
++void
++a03_early_disable(void)
++{
++	a03_early_mark(8, "leaving bootstrap TTBR0");
++	early_disabled = 1;
++	__asm__ volatile("dsb sy" ::: "memory");
++}
++#endif /* A03 */
+diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
+--- a/osfmk/arm64/start.s
++++ b/osfmk/arm64/start.s
+@@ -474,6 +474,24 @@
+ 	mov		x20, x0
+ 	mov		x21, #0
+ 
++#if defined(A03)
++	/* Stage 0: 80x32 magenta band; needs neither stack nor page tables. */
++	MOV64	x0, (0x9e000000 + 1568 * 2880)
++	MOV64	x1, 0xffff00ff
++	mov		x2, #32
++La03_mark_row:
++	mov		x3, #80
++	mov		x5, x0
++La03_mark_pixel:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	La03_mark_pixel
++	add		x0, x0, #2880
++	subs	x2, x2, #1
++	b.ne	La03_mark_row
++	dsb		sy
++#endif /* A03 */
++
+ 	// Set low reset vector before attempting any loads
+ 	adrp	x0, EXT(LowExceptionVectorBase)@page
+ 	add		x0, x0, EXT(LowExceptionVectorBase)@pageoff
+@@ -619,6 +637,22 @@
+ 	/* Setup the KVA bootstrap mapping */
+ 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
+ 	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
++
++#if defined(A03)
++	/*
++	 * Splash FB: one Normal-NC block in the existing V=P L2 table.
++	 * 0x9e000000 and RAM below 4GB share the first V=P L1 entry; calling
++	 * create_bootstrap_mapping again would replace the RAM L2 table. With
++	 * 16K pages that table is bootstrap_pagetables + 2*PGBYTES.
++	 */
++	MOV64	x10, 0x9e000000
++	MOV64	x11, (ARM_TTE_TYPE_BLOCK | ARM_TTE_VALID | ARM_TTE_BLOCK_SH(SH_OUTER_MEMORY) | ARM_TTE_BLOCK_ATTRINDX(CACHE_ATTRINDX_WRITECOMB) | ARM_TTE_BLOCK_AF | ARM_TTE_BLOCK_PNX | ARM_TTE_BLOCK_NX)
++	orr		x11, x11, x10
++	and		x12, x10, #(ARM_TT_L2_INDEX_MASK)
++	lsr		x12, x12, #(ARM_TT_L2_SHIFT)
++	add		x13, x25, #(2 * PGBYTES)
++	str		x11, [x13, x12, lsl #TTE_SHIFT]
++#endif /* A03 */
+ 
+ 	/* Ensure TTEs are visible */
+ 	dsb		ish
+diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
+--- a/osfmk/arm/arm_init.c
++++ b/osfmk/arm/arm_init.c
+@@ -58,6 +58,7 @@
+ #include <pexpert/arm/consistent_debug.h>
+ #include <pexpert/device_tree.h>
+ #include <arm64/proc_reg.h>
++#include <arm64/a03_early.h>
+ #include <arm/pmap.h>
+ #include <arm/caches_internal.h>
+ #include <arm/cpu_internal.h>
+@@ -356,6 +357,8 @@
+ 	DTEntry chosen = NULL;
+ 	unsigned int dt_entry_size = 0;
+ 
++	a03_early_mark(1, "arm_init entered (MMU on)");
++
+ 	arm_slide_rebase_and_sign_image();
+ 
+ 	arm_static_if_init(args);
+@@ -376,6 +379,7 @@
+ #endif /* defined(HAS_APPLE_PAC) */
+ 
+ 	PE_init_platform(FALSE, args); /* Get platform expert set up */
++	a03_early_mark(2, "PE_init_platform done");
+ 
+ #if __arm64__
+ 	configure_timer_apple_regs();
+@@ -459,6 +463,7 @@
+ #endif
+ 
+ 	ml_parse_cpu_topology();
++	a03_early_mark(3, "ml_parse_cpu_topology done");
+ 
+ 
+ 	boot_cpu_id = ml_get_boot_cpu_number();
+@@ -490,11 +495,13 @@
+ 	 */
+ 	thread->machine.preemption_count = 0;
+ 	cpu_bootstrap();
++	a03_early_mark(4, "cpu_bootstrap done");
+ 
+ 	rtclock_early_init();
+ 
+ 	kernel_debug_string_early("kernel_startup_bootstrap");
+ 	kernel_startup_bootstrap();
++	a03_early_mark(5, "kernel_startup_bootstrap done");
+ 
+ 	/*
+ 	 * Initialize the timer callout world
+@@ -502,6 +509,7 @@
+ 	timer_call_init();
+ 
+ 	cpu_init();
++	a03_early_mark(6, "cpu_init done");
+ 
+ 	processor_bootstrap();
+ 
+@@ -569,6 +577,7 @@
+ 	gDramSize = *dram_size;
+ 	pmap_first_pnum = (ppnum_t)atop(gDramBase);
+ 
++	a03_early_mark(7, "entering arm_vm_init");
+ 	arm_vm_init(xmaxmem, args);
+ 
+ 	if (debug_boot_arg) {
+diff --git a/osfmk/arm64/arm_vm_init.c b/osfmk/arm64/arm_vm_init.c
+--- a/osfmk/arm64/arm_vm_init.c
++++ b/osfmk/arm64/arm_vm_init.c
+@@ -41,6 +41,7 @@
+ #include <machine/atomic.h>
+ #include <arm64/proc_reg.h>
+ #include <arm64/lowglobals.h>
++#include <arm64/a03_early.h>
+ #include <arm/cpu_data_internal.h>
+ #include <arm/misc_protos.h>
+ #include <pexpert/arm64/boot.h>
+@@ -2166,6 +2167,8 @@
+ 
+ 	ml_enable_monitor();
+ 
++	/* The FB VA=PA mapping belongs to the outgoing TTBR0. */
++	a03_early_disable();
+ 	set_mmu_ttb(invalid_ttep & TTBR_BADDR_MASK);
+ 
+ 	flush_mmu_tlb();
+diff --git a/osfmk/kern/debug.c b/osfmk/kern/debug.c
+--- a/osfmk/kern/debug.c
++++ b/osfmk/kern/debug.c
+@@ -86,6 +86,9 @@
+ #include <stdatomic.h>
+ #include <sys/pgo.h>
+ #include <console/serial_protos.h>
++#if defined(__arm64__)
++#include <arm64/a03_early.h>
++#endif
+ #include <IOKit/IOBSD.h>
+ #include <libkern/crc.h>
+ 
+@@ -1253,6 +1256,11 @@
+ {
+ #pragma clang diagnostic pop
+ 
++#if defined(A03)
++	/* No CPU/thread/debugger state is needed for this first panic copy. */
++	a03_early_panic(panic_format_str, panic_args);
++#endif /* A03 */
++
+ #if defined(__x86_64__) && (DEVELOPMENT || DEBUG)
+ 	read_lbr();
+ #endif
