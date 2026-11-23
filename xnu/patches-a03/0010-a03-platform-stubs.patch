@@ -62,3 +62,18 @@ diff --git a/osfmk/kern/exception.c b/osfmk/kern/exception.c
  #include <vm/vm_shared_region_xnu.h>
  #include <arm/thread.h>
  
+diff --git a/osfmk/arm64/machine_routines.c b/osfmk/arm64/machine_routines.c
+--- a/osfmk/arm64/machine_routines.c
++++ b/osfmk/arm64/machine_routines.c
+@@ -2638,9 +2638,9 @@
+ 	return dec;
+ }
+ 
+-#if defined(SWEET)
++#if defined(SWEET) || defined(ARM64_BOARD_CONFIG_A03)
+ /*
+- * sweet: arm_vm_init() calls this unconditionally; Apple's definition (it
++ * sweet/A03: arm_vm_init() calls this unconditionally; Apple's definition (it
+  * enters the PPL/monitor) ships only in the closed per-SoC library. There is
+  * no monitor on SWEET.
+  */

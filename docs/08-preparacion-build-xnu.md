@@ -128,6 +128,8 @@ consumidor de ese contrato.
 - [x] Añadir `nos_arm_asm`/`nos_arm_pmap`/`pgzalloc` al `MASTER.arm64.a03` y cerrar los guards de Tightbeam/sampler.
 - [x] Cuarto run (`45092598433`): falló en `start.s` con `#endif without #if` al entrar por fin el ensamblador open-source.
 - [x] Corregir los dos bloques `SWEET` duplicados en `0005` y verificar balance de `#if/#endif`.
+- [x] Quinto run (`45096409214`): compilación y enlace casi completos; queda 1 símbolo, `_ml_enable_monitor`.
+- [x] Extender el stub vacío de `ml_enable_monitor()` de SWEET a A03 en `machine_routines.c`.
 - [ ] Reejecutar el build en macOS y verificar el binario resultante.
 - [ ] Integrar el kernel compilado con `stub/build_macho_boot.sh` como kernelcache de prueba.
 
@@ -209,6 +211,20 @@ segundo hunk ocurrió lo contrario (un `#endif /* SWEET */` añadido antes del c
 generador inserta los bloques A03 **antes** de `#if defined(SWEET)` sin tocar los guards donantes.
 La serie se regeneró, pasa `git apply` sobre el árbol donante y un chequeo adicional confirma que
 `start.s` no tiene `#endif` sin `#if` ni `#if` sin cerrar.
+
+### Resultado del quinto run de GitHub Actions
+
+Run `45096409214`: compilación completa y enlace reducido a **un solo** símbolo pendiente:
+
+```text
+Undefined symbols for architecture arm64:
+  "_ml_enable_monitor", referenced from: _arm_vm_init in arm_vm_init.o
+```
+
+Bergamota añadió un stub vacío de `ml_enable_monitor()` detrás de `#if defined(SWEET)` en
+`osfmk/arm64/machine_routines.c`, porque `arm_vm_init()` lo llama siempre y la definición de Apple
+vive en la librería cerrada del SoC. A03 no tiene monitor/PPL, así que se reutiliza el mismo stub
+extendiendo el guard a `defined(SWEET) || defined(ARM64_BOARD_CONFIG_A03)`.
 
 ## 7. Andamiaje creado
 

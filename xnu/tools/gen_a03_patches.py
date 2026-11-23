@@ -925,4 +925,9 @@ s.patch("0010-a03-platform-stubs.patch", [
     ("osfmk/kern/exception.c",
      "#if defined(ARM64_BOARD_CONFIG_SWEET)\n",
      "#if defined(ARM64_BOARD_CONFIG_SWEET) || defined(ARM64_BOARD_CONFIG_A03)\n"),
+    # Bergamota stubs ml_enable_monitor() only for SWEET; arm_vm_init() calls it
+    # on every board. A03 has no PPL/monitor either, so reuse the empty stub.
+    ("osfmk/arm64/machine_routines.c",
+     "#if defined(SWEET)\n/*\n * sweet: arm_vm_init() calls this unconditionally;",
+     "#if defined(SWEET) || defined(ARM64_BOARD_CONFIG_A03)\n/*\n * sweet/A03: arm_vm_init() calls this unconditionally;"),
 ])
