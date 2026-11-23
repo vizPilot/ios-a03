@@ -300,7 +300,13 @@ activarse aquí (el chequeo de `SCTLR_EL1_DEFAULT`): el generador ya lo tiene de
 `#if !VMAPPLE && !defined(SWEET) && !defined(A03)`. Quedan dos caminos: un `b .` desde un
 vector de excepción, o un `bl` a `set_mmu_ttb`/`APPLY_TUNABLES` que no retorna.
 
-Por eso el run `45176288504` instrumenta `start.s` con bandas de progreso, todas antes de
+El run `45176288504` (instrumentación) falló en 5m52s **antes de compilar**: al promover la
+serie se copiaron también los parches sin hunks (`0006`, `0007`, `0009`) que el donante ya
+aporta, y el `git apply` del runner abortó con `error: No valid patches in input`. Corregido:
+el generador ahora **no escribe** parches sin `@@` y los borra si existen; el verificador los
+omite. El repo quedó con 6 parches reales (`0001`–`0005`, `0008`, `0010`).
+
+Por eso el run `45177943774` instrumenta `start.s` con bandas de progreso, todas antes de
 cargar la MMU salvo la última:
 
 | Banda | Color | Punto |
@@ -311,6 +317,11 @@ cargar la MMU salvo la última:
 | 3 | cian | `common_start` alcanzado |
 | 4 | azul | justo antes de escribir `SCTLR_EL1` |
 | 5 | blanco | justo después de activar la MMU |
+
+Run `45177943774`: build y publicación correctos (28m30s). Kernel instrumentado
+SHA256 `1d82b9541bbd13104ff6b36ddfbb12bb2f2aa9e6e20e2dd8f70bb64fa25a5a1c`.
+`kernel-xnu-boot.img` SHA256 `7e543a17bc02f244893c85637c952abe8d9de0abf0a3162b56e63f5362ca00a5`,
+tar.md5 MD5 `fbba20a0a42fdd665a16b10c805f1d15`.
 
 Si aparece la banda N pero no la N+1, el fallo está entre esos dos puntos. El `verify` de la
 serie se endureció además para omitir parches sin hunks (`0006`, `0007`, `0009` ya los aporta

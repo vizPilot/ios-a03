@@ -646,6 +646,22 @@ s.patch("0005-a03-early-framebuffer.patch", [
      + a03_band(5, "0xffffffff")      # white: MMU enabled
      + "#endif /* A03 */\n"),
 
+    # Stage 6: NEON enabled, before TPIDR/MIDR.
+    ("osfmk/arm64/start.s",
+     "\t// Clear thread pointer\n",
+     "#if defined(A03)\n"
+     + a03_band(6, "0xff00ff00")      # green: CPACR_EL1 written
+     + "#endif /* A03 */\n"
+     "\t// Clear thread pointer\n"),
+
+    # Stage 7: about to return to arm_init() in C.
+    ("osfmk/arm64/start.s",
+     "\t// Return to arm_init()\n",
+     "#if defined(A03)\n"
+     + a03_band(7, "0xffff8800")      # orange: lr ready
+     + "#endif /* A03 */\n"
+     "\t// Return to arm_init()\n"),
+
     # Add the framebuffer to the existing V=P L2 table. RAM and FB share L1.
     ("osfmk/arm64/start.s",
      "\tcreate_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13\n\n#if defined(SWEET)\n",

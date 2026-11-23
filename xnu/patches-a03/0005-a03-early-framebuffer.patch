@@ -322,6 +322,54 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  
  #if !VMAPPLE && !defined(SWEET) && !defined(A03)
  	MOV64	x1, SCTLR_EL1_DEFAULT
+@@ -862,6 +980,23 @@
+ 	msr		CPACR_EL1, x0
+ #endif
+ 
++#if defined(A03)
++	/* A03 progress band 6: bottom row, 80x32 px. */
++	MOV64	x0, (0x9e000000 + 1568 * 2880 + 1920)
++	MOV64	x1, 0xff00ff00
++	mov		x2, #32
++La03_b6_row:
++	mov		x3, #80
++	mov		x5, x0
++La03_b6_pix:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	La03_b6_pix
++	add		x0, x0, #2880
++	subs	x2, x2, #1
++	b.ne	La03_b6_row
++	dsb		sy
++#endif /* A03 */
+ 	// Clear thread pointer
+ 	msr		TPIDR_EL1, xzr						// Set thread register
+ 
+@@ -905,6 +1040,23 @@
+ 	mov	lr, x21
+ #endif
+ 
++#if defined(A03)
++	/* A03 progress band 7: bottom row, 80x32 px. */
++	MOV64	x0, (0x9e000000 + 1568 * 2880 + 2240)
++	MOV64	x1, 0xffff8800
++	mov		x2, #32
++La03_b7_row:
++	mov		x3, #80
++	mov		x5, x0
++La03_b7_pix:
++	str		w1, [x5], #4
++	subs	x3, x3, #1
++	b.ne	La03_b7_pix
++	add		x0, x0, #2880
++	subs	x2, x2, #1
++	b.ne	La03_b7_row
++	dsb		sy
++#endif /* A03 */
+ 	// Return to arm_init()
+ 	ret
+ 
 diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
 --- a/osfmk/arm/arm_init.c
 +++ b/osfmk/arm/arm_init.c
