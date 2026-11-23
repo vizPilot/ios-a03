@@ -674,12 +674,16 @@ s.patch("0005-a03-early-framebuffer.patch", [
      + "#endif /* A03 */\n"
      "\t// Clear thread pointer\n"),
 
-    # Stage 7: about to return to arm_init() in C.
+    # Stage 7: about to return to arm_init() in C.  x0 holds the KVA of
+    # boot_args here and is the first argument to arm_init(), so the debug
+    # band must preserve it (x9 is free at this point).
     ("osfmk/arm64/start.s",
      "\t// Return to arm_init()\n",
      "#if defined(A03)\n"
+     "\tmov\t\tx9, x0\n\t\t\t\t\t\t\t/* preserve boot_args */\n"
      + a03_band(7, "0xffff8800")      # orange: lr ready
-     + "#endif /* A03 */\n"
+     + "\tmov\t\tx0, x9\n\t\t\t\t\t\t\t/* restore boot_args */\n"
+     "#endif /* A03 */\n"
      "\t// Return to arm_init()\n"),
 
     # Add the framebuffer to the existing V=P L2 table. RAM and FB share L1.

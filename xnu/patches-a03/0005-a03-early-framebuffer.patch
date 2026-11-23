@@ -366,11 +366,12 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
  	// Clear thread pointer
  	msr		TPIDR_EL1, xzr						// Set thread register
  
-@@ -905,6 +1040,23 @@
+@@ -905,6 +1040,25 @@
  	mov	lr, x21
  #endif
  
 +#if defined(A03)
++	mov		x9, x0							/* preserve boot_args */
 +	/* A03 progress band 7: bottom row, 80x32 px. */
 +	MOV64	x0, (0x9e000000 + 1568 * 2880 + 2240)
 +	MOV64	x1, 0xffff8800
@@ -386,6 +387,7 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 +	subs	x2, x2, #1
 +	b.ne	La03_b7_row
 +	dsb		sy
++	mov		x0, x9							/* restore boot_args */
 +#endif /* A03 */
  	// Return to arm_init()
  	ret

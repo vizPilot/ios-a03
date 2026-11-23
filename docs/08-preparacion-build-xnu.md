@@ -318,6 +318,149 @@ cargar la MMU salvo la última:
 | 4 | azul | justo antes de escribir `SCTLR_EL1` |
 | 5 | blanco | justo después de activar la MMU |
 
+**Tercera prueba en dispositivo:** aparecieron las 7 bandas (incluidas verde y naranja) y sigue
+sin texto. El `ret` está justo después de la naranja; para decidir si el salto a C funciona, el run
+`45193782531` añade bandas crudas **9** (primera instrucción C de `arm_init`), **10** (tras
+`arm_slide_rebase_and_sign_image`), **11** (tras `arm_static_if_init`) y **12** (tras
+`PE_init_platform`), además de reparar el hunk del `a03_early_mark(1)`: el donante Bergamota ya
+había reemplazado el prólogo original por llamadas `sweet_early_*`, así que el contexto que buscaba
+el generador (`DTEntry chosen = NULL;`) no existía y el mark 1 nunca se enlazó. El texto también se
+movió de la parte superior del panel a justo encima de las bandas (y≈1504).
+
+Nota: `sweet_early_set_video()` descarta `Video=0` y `sweet_early_mark` es log-only por defecto,
+así que esas llamadas no escriben en el framebuffer ni explican el hang.
+
+Run `45193782531`: build correcto (41m2s). Kernel SHA256
+`e95813ecd3a3fb44d8c9ab442f0afafe73b07e4c238140092451baae38428b22` (símbolos
+`_a03_early_band`/`_a03_early_mark` y cadena `arm_init entered` confirmados con `llvm-nm`/`grep`).
+boot.img SHA256 `0d6cfa53e0e8f050e62abc2a49486574722637004c0f81df097fc175b5c66afc`,
+tar.md5 MD5 `c917830c4da548811c9a8c47aff0d189`.
+
+**Cuarta prueba:** solo banda naranja (7), sin banda 9 ni texto. El `ret` a C no aterriza.
+Desensamblado: `lr = arm_init` correcto, `bl a03_early_band(9)` compilado, BSS zeroado por el
+loader (`__DATA` 0x48000 file / 0x154000 vm). Los 16 vectores de `LowExceptionVectorBase` son
+`b .` (silenciosos), así que cualquier excepción al entrar en C es indistinguible del hang.
+Para la quinta prueba se parchearon los 16 vectores **en el binario del kernel** (`patch_vectors.py`,
+offset de archivo `0x580000`, 72 bytes/slot): cada uno dibuja un bloque blanco 40x32 en
+y=1440, x=8+i*44. El tipo de excepción se lee por la posición del bloque. Kernel marcado SHA256
+`638c808b60902d810da59d644d3f21006226eeaab5897bfc7e422efc1e35a630`, boot.img SHA256
+`3a3a32f8d454d7d83416aac666ded451fd9870efb911ee41a83d88e2227088e4`, tar MD5
+`224637e893346d9582de020aed669126`. Sin rebuild de XNU.
+
+**Corrección:** ese primer parche de vectores apuntaba a `LowExceptionVectorBase` (`0x580000`),
+pero `VBAR_EL1` se escribe en `common_start` con `_ExceptionVectorsBase` (`0xfffffe000757f000`,
+file offset `0x57b000`). Los vectores reales no son `b .` sino branches a handlers en `0x57c000`.
+El usuario confirmó que no hubo cambio (solo naranja 7). Se regeneró el marcado sobre `0x57b000`
+(16 vectores, bloque blanco 40x32 en y=1440, x=8+i*44). Kernel marcado SHA256
+`875a254027632a12c4ca044d286f08d446b07b45affa2b407f1b349682352091`, boot.img SHA256
+`5903b1495273de4663f0a19a21cf61ae14ed5bf7d1904b2259125d5acb170770`, tar MD5
+`be2bf5c0bbc1d0d5e7f41b984c876884`.
+
+**Sexto resultado:** el usuario envió foto (`D:\a03-apple\20261123_123120.jpg`); confirmó que solo aparecen las
+bandas 0–7. Sin bloques de vector, sin banda 9, sin texto. Confirmado que `VBAR_EL1` se escribe con
+`_ExceptionVectorsBase` y que los vectores reales saltan a handlers en `0x57c000` (no `b .`). Por tanto
+**no hay excepción**: el `ret` se ejecuta pero no hay salida posterior.
+
+**Séptima prueba (diag7, sin rebuild):** `patch_diag7.py` parchea el kernel base `e95813ec…` en dos puntos:
+1. `ret` @ `0xfffffe00075855d4` → `b 0xfffffe0007584000`. El stub guarda `x30` en `x16`, dibuja amarillo
+   en x=8/y=1440 (stub alcanzado), compara con KVA de `arm_init` (verde x=52), PA `0xa2bee890` (rojo x=96)
+   y cero (azul x=140), y salta con `br x16`.
+2. `bl a03_early_band` @ `0xfffffe0007bf28d0` → `bl 0xfffffe0007584400`. El stub dibuja magenta en
+   x=432/y=1440 y vuelve con `ret`, burlando el guard `early_disabled` para responder si `arm_init` corre.
+
+Kernel `cdd1a6540d760a1f8b8c98c15091172541cf7e681ed123a84c3537b1a0873dd8`, boot.img
+`6d6c2b7b4381207f56e2961cc4dc335b232472489df8c14abd56bd5d31d2ac7d`, tar MD5
+`4a1d84f256e268a70e21bd050d9a27c0`. Usuario autorizó flashear y restaurar; confirmó restauración de la sexta.
+
+**Séptimo resultado:** amarillo (x=8) + verde (x=52), **sin magenta (x=432)**. Es decir: el `ret` se ejecuta y `x30` es
+exactamente la KVA de `arm_init` (`0xfffffe0007bf2890`), pero el `bl a03_early_band` de `arm_init` no se alcanza.
+Se descartó BTI como causa: `BTI_ENFORCED=1` en `apple_arm64_common.h`, pero el SCTLR compilado es
+`0x000000003454593d` (bit `SCTLR_BT1_ENABLED`, 1<<36, a cero). El stub usaba `br x16`; se cambió por `ret`.
+
+**Octava prueba (`patch_diag8.py`, sin rebuild):** tres sondas independientes.
+1. `ret` @ `0x75855d4` → stub con amarillo/verde/rojo/azul en y=1440, terminando en `ret` (no `br`).
+2. Primer instruction de `arm_init` @ `0x7bf2890` (`sub sp,sp,#0xd0`) → `b 0x7584800`; el stub dibuja
+   magenta en x=432,y=1400, reejecuta `sub sp,sp,#0xd0` y vuelve a `0x7bf2894`.
+3. `bl a03_early_band` @ `0x7bf28d0` → stub que dibuja magenta en x=480,y=1400 y vuelve con `ret`.
+
+Lectura: ambos magentas = `arm_init` corre y el fallo es del console C; solo x=432 = muere en el prólogo;
+ninguno = el salto a `arm_init` no ocurre. Kernel
+`45cfcbf5037385421cd7913aa36d02065445c5788d1df97978efb263514aafb2`, boot.img
+`2757a63864c707a836d5828b0cfaec83bc1d5a9bfcfa49bd5cea747c95611a91`, tar MD5
+`c91a0b45f0b5e48f8ecc18bdbe151cfa`. Usuario autorizó flashear y restaurar; confirmó restauración de la séptima.
+
+**Octavo resultado:** otra vez amarillo + verde, **sin magenta ni en x=432 (entrada de `arm_init`) ni en x=480
+(prólogo)**. Por tanto `x30` es correcto pero el salto a `arm_init` no llega a ejecutar ni su primera
+instruction. Se descartó BTI y se cambió `br` por `ret` sin efecto.
+
+**Novena prueba (`patch_diag9.py`, sin rebuild):** diag8 más dos sondas.
+- Banda cian en x=176,y=1440 justo antes del `ret` del stub: confirma que el stub llega al final.
+- Los 16 vectores reales (`_ExceptionVectorsBase`, file `0x57b000`) dibujan bloque blanco 40x32 en
+  y=1360, x=8+i*44, y entran en `b .`. Un bloque blanco identifica la excepción por su x.
+
+Lectura: cian sin magenta + bloque blanco = el `ret` dispara un abort; cian sin magenta sin blanco =
+salto a un agujero sin excepción; magenta = `arm_init` sí corre y la observación anterior fue incompleta.
+Kernel `044d17760d63ba43400dfd26aca47a6b5ad1dd447654d9c172515e6736af36ce`, boot.img
+`50f0157612c113c0416b000037aaf2d50eb9721097240dde8ed095abbc709ac3`, tar MD5
+`2d9b592e52eeff600cf057a68fb361e7`. Usuario autorizó flashear y restaurar; confirmó restauración de la octava.
+
+**Noveno resultado:** amarillo + verde + cian, sin magenta y sin bloques blancos. El stub se agota
+(cian), `x30` es correcto, y no se toma ninguna excepción (vectores reales verificados en `0x57b000`,
+`VBAR_EL1 = 0xfffffe000757f000`). Por tanto el `ret` sale hacia una dirección que no ejecuta ni
+falla. Se verificó además que `BTI_ENFORCED=1` pero `SCTLR=0x3454593d` no habilita BTIE.
+
+**Décima prueba (`patch_diag10.py`, sin rebuild):** todas las sondas nuevas se mueven a la fila
+y≈1440 que sí es visible, para descartar que y=1400/y=1360 estuvieran fuera del área mostrada.
+Mapa: x=8 amarillo, x=52 verde, x=96 rojo, x=140 azul, x=176 cian (fin del stub), x=216 naranja
+(`ldr w9,[arm_init]` devuelve `0x17e647dc`, o sea el kernel de RAM sí tiene el parche), x=256 magenta
+(entrada de `arm_init`), x=296 magenta (prólogo completado). Vectores siguen marcados en y=1360.
+Kernel `c2935b3b58301e3e5df81b88afaf63d7994b05d65d40a1261eaae2d23a46647e`, boot.img
+`f6c2646cb463778b510afbac810b46b2dc5bcf084e9fe1aa3126cfd5dfc9e4b8`, tar MD5
+`d1e25c59ce5e9da6920d7e8cab52fdcb`. Usuario autorizó flashear y restaurar; confirmó restauración de la novena.
+
+**Décimo resultado:** amarillo + verde + cian, **sin naranja ni magenta**. El parche sí está en el archivo
+(`arm_init` primer word `0x17e647dc`, `ret` site `0x17fffa8b`), así que la lectura de datos en KVA no
+devuelve el valor esperado. Hipótesis nueva: **la KVA es inutilizable en este punto** (MMU no activo o
+TTBR1 mal mapeado). Todas las sondas visibles escriben a la dirección física del framebuffer
+`0x9E000000`, así que no demuestran que el MMU esté activo; las bandas 5/6/7 "tras MMU" solo son
+etiquetas de código, no prueba de traducción.
+
+**Undécima prueba (`patch_diag11.py`, sin rebuild):**
+- x=8 amarillo, x=52 verde, x=176 cian como antes.
+- x=216 azul si `SCTLR_EL1.M=1`, blanco si `M=0` (lea `mrs x9,sctlr_el1; and x9,x9,#1`).
+- El stub ya NO vuelve con `ret` a `x30` (KVA), sino que hace `br` a la dirección **física** de
+  `arm_init`, `0xa2bee890`, alcanzable tanto con MMU apagado como con el mapeo V=P de TTBR0.
+- x=256 magenta al entrar en `arm_init`; x=296 magenta al completar el prólogo.
+- Vectores marcados en y=1360.
+
+Kernel `5ce0d7d2372f80ff5391ef35a10abbb8d41c806cca54ef780c450b56129b8261`, boot.img
+`cff75a3fc465d61f407ccd1d28057a56a7c1b613337059ced93279d7055db6f3`, tar MD5
+`c40f8f28da1122df32b74b730d47a61d`. Usuario autorizó flashear y restaurar; confirmó restauración de la décima.
+
+**Undécimo resultado:** rojo en x=216 (`SCTLR_EL1.M=1`, MMU **sí** activa) y un magenta nuevo; sin banda 9 ni texto.
+El `br` a la dirección **física** de `arm_init` (`0xa2bee890`) sí entra en C, mientras que el `ret`/`br` a su
+KVA (`0xfffffe0007bf2890`) no. Por tanto el problema con la KVA es de mapeo/traducción, no de MMU apagada.
+La V=P (`TTBR0`) funciona.
+
+**BUG REAL ENCONTRADO (duodécima prueba):** el desensamblado del kernel base muestra que la banda 7 de
+depuración sobrescribe `x0` justo antes del `ret`:
+
+```
+0xfffffe0007585584  add  x0, x20, x22   <- boot_args KVA
+0xfffffe0007585588  sub  x0, x0, x23
+0xfffffe000758558c  ... dibujo banda 7, destruye x0 ...
+0xfffffe00075855d0  dsb  sy
+0xfffffe00075855d4  ret                 <- arm_init recibe x0 = 0x9e44f0c0
+```
+
+El parche A03 insertó la banda entre la construcción de `x0` y el `ret`. `arm_init` recibe la dirección
+del framebuffer en vez de `boot_args`. La duodécima prueba NOPea esas 18 instrucciones (`0x758558c`–
+`0x75855d0`) desde binario, mantiene el salto físico a `arm_init`, y añade: x=336 blanco si
+`x0 == x20+x22-x23`, x=256 magenta (entrada) y x=400 naranja (prólogo) para distinguirlos sin ambigüedad.
+Kernel `524e9d4bc82115d4119f29c6f35002e6a4d3d11ef43a4a58fef9c25525e14a0d`, boot.img
+`5ddf9862d5b6b8c45b9614346ed6120733c64f82bb157a47b4c95c41dfc7b2af`, tar MD5
+`bea18bb5c308f2ae2e0ddc5c2136d029`. Usuario autorizó flashear y restaurar; confirmó restauración de la undécima.
+
 **Segunda prueba en dispositivo:** aparecieron las 6 bandas (magenta, roja, amarilla, cian,
 azul y blanca) y **ningún texto**. La blanca confirma que la MMU se activó; el hang está entre
 `isb` (post-`SCTLR_EL1`) y el `a03_early_mark(1)` de `arm_init.c`. `HAS_CLUSTER` no está
