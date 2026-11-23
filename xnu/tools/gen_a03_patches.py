@@ -595,12 +595,12 @@ s.patch("0005-a03-early-framebuffer.patch", [
      "\tb.ne\tLa03_mark_row\n"
      "\tdsb\t\tsy\n"
      "#endif /* A03 */\n\n"
-     "\t// Set low reset vector before attempting any loads\n"),
+     "#if defined(SWEET)\n"),
 
     # Add the framebuffer to the existing V=P L2 table. RAM and FB share L1.
     ("osfmk/arm64/start.s",
      "\tcreate_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13\n\n#if defined(SWEET)\n",
-     "\tcreate_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13\n\n#if defined(SWEET)\n"
+     "\tcreate_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13\n\n"
      "#if defined(A03)\n"
      "\t/*\n"
      "\t * Splash FB: one Normal-NC block in the existing V=P L2 table.\n"
@@ -615,9 +615,8 @@ s.patch("0005-a03-early-framebuffer.patch", [
      "\tlsr\t\tx12, x12, #(ARM_TT_L2_SHIFT)\n"
      "\tadd\t\tx13, x25, #(2 * PGBYTES)\n"
      "\tstr\t\tx11, [x13, x12, lsl #TTE_SHIFT]\n"
-     "#endif /* A03 */\n"
-     "#endif /* SWEET */\n\n"
-     "\t/* Ensure TTEs are visible */\n"),
+     "#endif /* A03 */\n\n"
+     "#if defined(SWEET)\n"),
 
     ("osfmk/arm/arm_init.c",
      "#include <arm64/proc_reg.h>\n",

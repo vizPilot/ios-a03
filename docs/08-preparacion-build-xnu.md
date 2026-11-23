@@ -124,6 +124,10 @@ consumidor de ese contrato.
 - [x] Regenerar la serie A03 contra el árbol con 264 parches donantes aplicados: 7 parches, verificados con `git apply`.
 - [x] Ejecutar el segundo run (`45083363795`): los parches aplicaron, falló en compilación.
 - [x] Corregir las condiciones `arm64e`/Tightbeam invertidas y excluir el framebuffer SWEET del slice A03.
+- [x] Tercer run (`45088333954`): **toda la compilación pasó**, falló el enlace (241 símbolos sin definir).
+- [x] Añadir `nos_arm_asm`/`nos_arm_pmap`/`pgzalloc` al `MASTER.arm64.a03` y cerrar los guards de Tightbeam/sampler.
+- [x] Cuarto run (`45092598433`): falló en `start.s` con `#endif without #if` al entrar por fin el ensamblador open-source.
+- [x] Corregir los dos bloques `SWEET` duplicados en `0005` y verificar balance de `#if/#endif`.
 - [ ] Reejecutar el build en macOS y verificar el binario resultante.
 - [ ] Integrar el kernel compilado con `stub/build_macho_boot.sh` como kernelcache de prueba.
 
@@ -167,6 +171,44 @@ donante, 1080×2400 y boot args SWEET) se compilaba en el slice A03; ahora está
 Dos parches base de `darwin-xnu-build` siguen siendo omitidos por el runner, de forma inocua:
 `link_kdk.patch` (no queremos `-force_load libA03.os.*`) y `remove_applefeatures_include.patch`
 (el donante ya quitó ese include).
+
+### Resultado del tercer run de GitHub Actions
+
+Run `45088333954`: **compilación completa**, sin errores de C/ensamblador. Falló el enlace:
+
+```text
+Undefined symbols for architecture arm64:
+  "_CleanPoC_Dcache", referenced from: _dcache_incoherent_io_store64 in caches.o
+  "_bcopyin", referenced from: _copyin in copyio.o
+  "_pmap_enter_options", ...
+  "_sweet_sample_task", referenced from: _sweet_sample_proc in sweet_sample.o
+  "_tb_transport_startup", referenced from: _tightbeam_startup in exclaves.o
+```
+
+241 símbolos. Causa: `MASTER.arm64.a03` se derivó de `MASTER.arm64.MacOSX`, donde el KDK cerrado
+aporta `pmap*.o`, `caches_asm.o`, `start.o`, etc. Bergamota evita eso con
+`nos_arm_asm nos_arm_pmap` en `KERNEL_BASE`; nuestro `replace` buscaba una cadena que el donante ya
+había cambiado por `ARM_EXTRAS_BASE`, así que no aplicó. Corregido, junto con `pgzalloc` (contenido
+en `VM_DEV` de SWEET), el segundo guard de Tightbeam en `exclaves.c` y el bloque
+`ARM64_BOARD_CONFIG_SWEET` de `exception.c` que define `sweet_sample_task`.
+
+### Resultado del cuarto run de GitHub Actions
+
+Run `45092598433`: con `nos_arm_asm` activo, `osfmk/arm64/start.s` entró por primera vez en la
+compilación y falló en preprocesado:
+
+```text
+osfmk/arm64/start.s:2015:2: error: #endif without #if
+osfmk/arm64/start.s:743:2: error: #endif without #if
+make[7]: *** [start.o] Error 1
+```
+
+Causa: el generador de `0005-a03-early-framebuffer.patch` reemplazó el `#if defined(SWEET)` original
+por un bloque `#if defined(A03) ... #endif`, dejando el `#endif` del bloque SWEET sin pareja; en el
+segundo hunk ocurrió lo contrario (un `#endif /* SWEET */` añadido antes del cuerpo SWEET). Ahora el
+generador inserta los bloques A03 **antes** de `#if defined(SWEET)` sin tocar los guards donantes.
+La serie se regeneró, pasa `git apply` sobre el árbol donante y un chequeo adicional confirma que
+`start.s` no tiene `#endif` sin `#if` ni `#if` sin cerrar.
 
 ## 7. Andamiaje creado
 

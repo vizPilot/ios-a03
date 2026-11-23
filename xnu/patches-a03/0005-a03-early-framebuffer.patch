@@ -165,11 +165,10 @@ new file mode 100644
 diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 --- a/osfmk/arm64/start.s
 +++ b/osfmk/arm64/start.s
-@@ -524,7 +524,25 @@
+@@ -524,6 +524,24 @@
  	mov		x20, x0
  	mov		x21, #0
  
--#if defined(SWEET)
 +#if defined(A03)
 +	/* Stage 0: 80x32 magenta band; needs neither stack nor page tables. */
 +	MOV64	x0, (0x9e000000 + 1568 * 2880)
@@ -188,14 +187,14 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 +	dsb		sy
 +#endif /* A03 */
 +
-+	// Set low reset vector before attempting any loads
+ #if defined(SWEET)
  	/* Stage 0: white 64x32 band, no stack or page tables needed. */
  	MOV64	x0, (0x9c000000 + 2368 * 4320)
- 	mov		w1, #-1
-@@ -690,6 +708,24 @@
+@@ -688,6 +706,22 @@
+ 	/* Setup the KVA bootstrap mapping */
+ 	lsr		x5,  x24, #(ARM_TT_L2_SHIFT)
  	create_bootstrap_mapping x14, x15, x5, x3, x2, x9, x10, x11, x12, x13
- 
- #if defined(SWEET)
++
 +#if defined(A03)
 +	/*
 +	 * Splash FB: one Normal-NC block in the existing V=P L2 table.
@@ -211,12 +210,9 @@ diff --git a/osfmk/arm64/start.s b/osfmk/arm64/start.s
 +	add		x13, x25, #(2 * PGBYTES)
 +	str		x11, [x13, x12, lsl #TTE_SHIFT]
 +#endif /* A03 */
-+#endif /* SWEET */
-+
-+	/* Ensure TTEs are visible */
+ 
+ #if defined(SWEET)
  	/*
- 	 * Splash framebuffer: one 32MB Normal-NC block in the EXISTING V=P
- 	 * L2 table. Both framebuffer and RAM use L1 index 0; another call to
 diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
 --- a/osfmk/arm/arm_init.c
 +++ b/osfmk/arm/arm_init.c
