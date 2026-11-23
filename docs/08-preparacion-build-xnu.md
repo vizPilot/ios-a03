@@ -132,8 +132,11 @@ consumidor de ese contrato.
 - [x] Extender el stub vacío de `ml_enable_monitor()` de SWEET a A03 en `machine_routines.c`.
 - [x] Sexto run (`45099912009`): **build y enlace correctos**; falló solo la verificación del artefacto.
 - [x] Sustituir el `grep` frágil de `A03 EARLY` por `file`/`nm` sobre el Mach-O sin strip.
-- [ ] Reejecutar el build y publicar el artefacto `xnu-a03-kernel`.
-- [ ] Integrar el kernel compilado con `stub/build_macho_boot.sh` como kernelcache de prueba.
+- [x] Séptimo run (`45103407934`): **build, verificación y publicación correctos**.
+- [x] Descargar `kernel.development.a03` (20 897 672 bytes, SHA256 `ada43a4e…f038d53`).
+- [x] Corregir el loader Mach-O para segmentos `vmsize==0` y `physBase` real.
+- [x] Sanear el DTB (`androidboot.serialno`, `androidboot.un`) y construir `kernel-xnu-boot.img`.
+- [ ] **Pendiente de autorización:** flashear con Odin y restaurar el `boot.img` stock.
 
 ### Resultado del primer run de GitHub Actions
 
@@ -242,6 +245,45 @@ enlazan); con `-O2` el compilador puede desplegar `a03_early_string("A03 EARLY "
 en vez de conservar la cadena contigua, así que el `grep` no era una prueba válida. La verificación
 ahora comprueba `file ... arm64`, la cadena de versión y, vía `nm`, que el símbolo
 `a03_early_mark` existe en `kernel.development.a03.unstripped.noctf`.
+
+### Resultado del séptimo run de GitHub Actions
+
+Run `45103407934`: **todo el job pasó** (31m50s), incluidos `Verify and publish kernel` y ambos
+`upload-artifact`. Artefacto `xnu-a03-kernel` descargado a `build/`:
+
+```text
+kernel.development.a03: Mach-O 64-bit arm64 executable
+size    : 20 897 672 bytes
+SHA256  : ada43a4e9913f08fbfc8d88763d08c7935fbed09a288507b25ce3a6f0f038d53
+```
+
+Segmentos: `__TEXT` en `0xfffffe0007004000`, entry `0xfffffe0007583488`
+(offset `0x57f488`). El loader copia __TEXT a `0xA2000000`, así que el entry físico es
+`0xA257f488`. El binario mide ~20 MB; el máximo del loader es 64 MB, con margen.
+
+Dos correcciones necesarias en `stub/macho_loader.c` antes de integrar:
+
+1. XNU emite segmentos con `vmsize == 0` (`__PRELINK_*`, `__CTF`); `__CTF` además tiene
+   `filesize > 0`. El loader los rechazaba con `return 0` y, peor, el `zero-fill` habría
+   desbordado. Ahora se saltan.
+2. `boot_args.physBase` estaba fijo en `0x80000000`; `start.s` deriva de ahí el delta
+   virtual↔físico. Ahora es `KERN_PHYS` (`0xA2000000`), que es donde el loader coloca __TEXT.
+
+El DTB crudo contenía `androidboot.serialno=R9YT719RMRH` y `androidboot.un=H154…`.
+`stub/sanitize_dtb.py` los reemplaza por `X` sin cambiar la longitud del blob, manteniendo
+válidos todos los offsets. Resultado: `/mnt/d/a03/a03.sanitized.dtb` (376 049 bytes).
+
+`stub/build_xnu_boot.sh` construyó localmente:
+
+```text
+/mnt/d/a03/kernel-xnu.img       21 900 960 bytes (Image ARM64)
+/mnt/d/a03/kernel-xnu-boot.img  67 108 864 bytes, SHA256 940566ac…3580529c
+/mnt/d/a03/kernel-xnu-boot.tar.md5  MD5 a854d9b3147b1cdf0eb3dd7a6993caa8
+```
+
+El `boot.img` stock rooteado sigue intacto (SHA256 `5edae458…f271bd`). **No se ha flasheado
+nada.** El siguiente paso requiere autorización explícita: Odin con `tar.md5` de solo
+`boot.img`, observar framebuffer y restaurar inmediatamente el stock.
 
 ## 7. Andamiaje creado
 

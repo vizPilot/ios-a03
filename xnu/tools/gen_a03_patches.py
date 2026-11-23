@@ -570,32 +570,73 @@ a03_early_disable(void)
 #endif /* A03 */
 '''
 
+def a03_band(stage, color):
+    """Straight-line framebuffer band for start.s (no stack, no C, no macros)."""
+    return (
+        f"\t/* A03 progress band {stage}: bottom row, 80x32 px. */\n"
+        f"\tMOV64\tx0, (0x9e000000 + 1568 * 2880 + {stage * 320})\n"
+        f"\tMOV64\tx1, {color}\n"
+        f"\tmov\t\tx2, #32\n"
+        f"La03_b{stage}_row:\n"
+        f"\tmov\t\tx3, #80\n"
+        f"\tmov\t\tx5, x0\n"
+        f"La03_b{stage}_pix:\n"
+        f"\tstr\t\tw1, [x5], #4\n"
+        f"\tsubs\tx3, x3, #1\n"
+        f"\tb.ne\tLa03_b{stage}_pix\n"
+        f"\tadd\t\tx0, x0, #2880\n"
+        f"\tsubs\tx2, x2, #1\n"
+        f"\tb.ne\tLa03_b{stage}_row\n"
+        f"\tdsb\t\tsy\n"
+    )
+
+
 s.patch("0005-a03-early-framebuffer.patch", [
     ("osfmk/arm64/a03_early.h", "", A03_EARLY_H),
     ("osfmk/arm64/a03_early.c", "", A03_EARLY_C),
 
-    # Stage 0: a magenta band at the bottom of the screen. No stack, no tables.
+    # Stage 0/1: before any page tables, VBAR or stacks are touched.
     ("osfmk/arm64/start.s",
      "\tmov\t\tx20, x0\n\tmov\t\tx21, #0\n\n#if defined(SWEET)\n",
      "\tmov\t\tx20, x0\n\tmov\t\tx21, #0\n\n"
      "#if defined(A03)\n"
-     "\t/* Stage 0: 80x32 magenta band; needs neither stack nor page tables. */\n"
-     "\tMOV64\tx0, (0x9e000000 + 1568 * 2880)\n"
-     "\tMOV64\tx1, 0xffff00ff\n"
-     "\tmov\t\tx2, #32\n"
-     "La03_mark_row:\n"
-     "\tmov\t\tx3, #80\n"
-     "\tmov\t\tx5, x0\n"
-     "La03_mark_pixel:\n"
-     "\tstr\t\tw1, [x5], #4\n"
-     "\tsubs\tx3, x3, #1\n"
-     "\tb.ne\tLa03_mark_pixel\n"
-     "\tadd\t\tx0, x0, #2880\n"
-     "\tsubs\tx2, x2, #1\n"
-     "\tb.ne\tLa03_mark_row\n"
-     "\tdsb\t\tsy\n"
-     "#endif /* A03 */\n\n"
+     + a03_band(0, "0xffff00ff")      # magenta: entry
+     + a03_band(1, "0xffff0000")      # red: boot args saved
+     + "#endif /* A03 */\n\n"
      "#if defined(SWEET)\n"),
+
+    # Stage 2: boot args read, stacks set, just before bootstrap page tables.
+    ("osfmk/arm64/start.s",
+     "\tmov\t\tx4, x0\n\tmov\t\tx14, x22\n\tmov\t\tx15, x23\n",
+     "#if defined(A03)\n"
+     + a03_band(2, "0xffffff00")      # yellow: stacks ready
+     + "#endif /* A03 */\n"
+     "\tmov\t\tx4, x0\n\tmov\t\tx14, x22\n\tmov\t\tx15, x23\n"),
+
+    # Stage 3: common_start reached (TCR/TTBR/MAIR still ahead).
+    ("osfmk/arm64/start.s",
+     "common_start:\n\n#if HAS_NEX_PG\n",
+     "common_start:\n\n"
+     "#if defined(A03)\n"
+     + a03_band(3, "0xff00ffff")      # cyan: common_start
+     + "#endif /* A03 */\n\n"
+     "#if HAS_NEX_PG\n"),
+
+    # Stage 4: immediately before SCTLR_EL1 (MMU still off).
+    ("osfmk/arm64/start.s",
+     "\t// Enable caches, MMU, ROP and JOP\n",
+     "#if defined(A03)\n"
+     + a03_band(4, "0xff0000ff")      # blue: about to enable MMU
+     + "#endif /* A03 */\n"
+     "\t// Enable caches, MMU, ROP and JOP\n"),
+
+    # Stage 5: after SCTLR_EL1 (MMU on). 0x9e000000 is in the V=P map.
+    ("osfmk/arm64/start.s",
+     "\tMSR_SCTLR_EL1_X0\n\tisb\t\tsy\n",
+     "\tMSR_SCTLR_EL1_X0\n\tisb\t\tsy\n"
+     "#if defined(A03)\n"
+     + a03_band(5, "0xffffffff")      # white: MMU enabled
+     + "#endif /* A03 */\n"),
 
     # Add the framebuffer to the existing V=P L2 table. RAM and FB share L1.
     ("osfmk/arm64/start.s",

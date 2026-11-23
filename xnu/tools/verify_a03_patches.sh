@@ -11,6 +11,12 @@ trap 'rm -rf "$WORK"' EXIT
 cp -a "$BASE" "$WORK/xnu"
 cd "$WORK/xnu"
 for p in "$PATCHES"/*.patch; do
+    # Donor-patched trees may already contain 0006/0009; the generator then
+    # emits an empty file, which `git apply` rejects as "no valid patches".
+    if ! grep -q '^@@' "$p"; then
+        echo "== $(basename "$p") (sin hunks, omitido)"
+        continue
+    fi
     echo "== $(basename "$p")"
     git apply --check "$p"
     git apply "$p"
