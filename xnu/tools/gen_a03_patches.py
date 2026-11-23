@@ -74,6 +74,14 @@ class State:
                     fromfile=f"a/{rel}", tofile=f"b/{rel}", n=3, lineterm="\n")
             chunks.append(header + "".join(diff))
         text = "".join(chunks)
+        if "@@" not in text:
+            # The donor tree already carries this change. Writing a header-only
+            # patch makes the runner's `git apply` abort with "no valid patches".
+            old = OUT / name
+            if old.exists():
+                old.unlink()
+            print(f"{name}: omitted (already in donor tree)")
+            return
         (OUT / name).write_text(text, encoding="utf-8")
         print(f"{name}: {len(chunks)} file(s), {len(text)} bytes")
 

@@ -285,6 +285,37 @@ El `boot.img` stock rooteado sigue intacto (SHA256 `5edae458…f271bd`). **No se
 nada.** El siguiente paso requiere autorización explícita: Odin con `tar.md5` de solo
 `boot.img`, observar framebuffer y restaurar inmediatamente el stock.
 
+### Primer arranque real en dispositivo (usuario autorizó Odin)
+
+Flasheado `kernel-xnu-boot.tar.md5`, restaurado después con `boot-stock-restore.tar.md5`.
+Resultado observado: **una franja magenta abajo y se quedó quieto** (sin panic, sin reboot).
+
+Esa franja es exactamente el **stage 0 del parche `0005` en `start.s`**: se pinta apenas entra
+`_start_first_cpu`, antes de tocar VBAR, boot args, stacks, tablas de página o MMU:
+la banda es de 80×32 px en `x=0..79`, `y=1568..1599`, color `0xffff00ff`.
+
+No apareció el `a03_early_mark(1, "arm_init entered (MMU on)")` de `arm_init.c`, así que XNU
+**no llegó a C**. El hang está dentro de `start.s`. Se descartó el único `bne .` que podía
+activarse aquí (el chequeo de `SCTLR_EL1_DEFAULT`): el generador ya lo tiene detrás de
+`#if !VMAPPLE && !defined(SWEET) && !defined(A03)`. Quedan dos caminos: un `b .` desde un
+vector de excepción, o un `bl` a `set_mmu_ttb`/`APPLY_TUNABLES` que no retorna.
+
+Por eso el run `45176288504` instrumenta `start.s` con bandas de progreso, todas antes de
+cargar la MMU salvo la última:
+
+| Banda | Color | Punto |
+|-------|-------|-------|
+| 0 | magenta | entrada a `_start_first_cpu` (ya existía) |
+| 1 | rojo | boot args guardados en `x20` |
+| 2 | amarillo | boot args leídos y stacks listos |
+| 3 | cian | `common_start` alcanzado |
+| 4 | azul | justo antes de escribir `SCTLR_EL1` |
+| 5 | blanco | justo después de activar la MMU |
+
+Si aparece la banda N pero no la N+1, el fallo está entre esos dos puntos. El `verify` de la
+serie se endureció además para omitir parches sin hunks (`0006`, `0007`, `0009` ya los aporta
+el donante), de modo que `git apply` no se detenga en un archivo vacío.
+
 ## 7. Andamiaje creado
 
 ```text
