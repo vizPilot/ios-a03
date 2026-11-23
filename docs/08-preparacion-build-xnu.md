@@ -318,6 +318,17 @@ cargar la MMU salvo la última:
 | 4 | azul | justo antes de escribir `SCTLR_EL1` |
 | 5 | blanco | justo después de activar la MMU |
 
+**Segunda prueba en dispositivo:** aparecieron las 6 bandas (magenta, roja, amarilla, cian,
+azul y blanca) y **ningún texto**. La blanca confirma que la MMU se activó; el hang está entre
+`isb` (post-`SCTLR_EL1`) y el `a03_early_mark(1)` de `arm_init.c`. `HAS_CLUSTER` no está
+definido para A03, así que el bloque `CPU_OVRD` (registro Apple) se omite, descartado.
+
+El run `45184015200` añade dos bandas más: verde 6 tras escribir `CPACR_EL1` (NEON) y naranja 7
+justo antes del `ret` a `arm_init`. Build correcto (40 min, tras un corte de luz local que solo
+afectó al `gh` watch). Kernel SHA256 `a41db80d348437825ed7a94f35b261ba4d23b5c816521b8f2629e6e38f656806`,
+boot.img SHA256 `d14bfeeefae84115befe35290da4684f2a752210816db586c5dcbdf237f822c1`,
+tar.md5 MD5 `c8a1c0d614a4f58fdb9a336c7c0ecb72`.
+
 Run `45177943774`: build y publicación correctos (28m30s). Kernel instrumentado
 SHA256 `1d82b9541bbd13104ff6b36ddfbb12bb2f2aa9e6e20e2dd8f70bb64fa25a5a1c`.
 `kernel-xnu-boot.img` SHA256 `7e543a17bc02f244893c85637c952abe8d9de0abf0a3162b56e63f5362ca00a5`,

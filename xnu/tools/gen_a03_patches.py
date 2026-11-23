@@ -428,11 +428,13 @@ A03_EARLY_H = r'''/* Early screen diagnostics, valid only while the bootstrap TT
 #include <stdarg.h>
 
 #if defined(A03)
+void a03_early_band(unsigned int stage);
 void a03_early_mark(unsigned int stage, const char *label);
 void a03_early_putc(char c);
 void a03_early_panic(const char *fmt, va_list *args);
 void a03_early_disable(void);
 #else
+static inline void a03_early_band(unsigned int stage) { (void)stage; }
 static inline void a03_early_mark(unsigned int stage, const char *label)
 {
 	(void)stage;
@@ -465,6 +467,8 @@ A03_EARLY_C = r'''/*
 #define EARLY_TOP        (EARLY_HEIGHT - 32u)
 #define EARLY_ROWS       (EARLY_TOP / EARLY_CELL_H)
 #define EARLY_COLS       (EARLY_WIDTH / EARLY_CELL_W)
+/* Draw text immediately above the progress bands, not at the top of the panel. */
+#define EARLY_TEXT_Y(r)  (EARLY_TOP - EARLY_CELL_H - (r) * EARLY_CELL_H)
 
 #define EARLY_FG         0xffffffffu   /* BGRA: white, A=0xff */
 #define EARLY_BG         0xff000000u   /* BGRA: black, A=0xff */
@@ -478,7 +482,7 @@ static void
 a03_early_clear_row(void)
 {
 	for (unsigned int y = 0; y < EARLY_CELL_H; y++) {
-		volatile uint32_t *line = EARLY_FB + (early_row * EARLY_CELL_H + y) * EARLY_STRIDE;
+		volatile uint32_t *line = EARLY_FB + (EARLY_TEXT_Y(early_row) + y) * EARLY_STRIDE;
 		for (unsigned int x = 0; x < EARLY_WIDTH; x++) {
 			line[x] = EARLY_BG;
 		}
@@ -511,7 +515,7 @@ a03_early_putc(char c)
 	for (unsigned int gy = 0; gy < 16; gy++) {
 		for (unsigned int sy = 0; sy < EARLY_SCALE; sy++) {
 			volatile uint32_t *line = EARLY_FB +
-			    (early_row * EARLY_CELL_H + gy * EARLY_SCALE + sy) * EARLY_STRIDE +
+			    (EARLY_TEXT_Y(early_row) + gy * EARLY_SCALE + sy) * EARLY_STRIDE +
 			    early_col * EARLY_CELL_W;
 			for (unsigned int gx = 0; gx < 8; gx++) {
 				uint32_t pixel = (glyph[gy] & (1u << gx)) ? EARLY_FG : EARLY_BG;
@@ -531,6 +535,22 @@ a03_early_string(const char *str)
 	while (*str) {
 		a03_early_putc(*str++);
 	}
+}
+
+/* Raw progress band, no font: safe to call as the first C statement. */
+void
+a03_early_band(unsigned int stage)
+{
+	if (early_disabled || stage > 15) {
+		return;
+	}
+	uint32_t color = 0xff00ff00u | (stage * 24u << 16);
+	for (unsigned int y = EARLY_TOP; y < EARLY_HEIGHT; y++) {
+		for (unsigned int x = stage * 48u; x < (stage + 1) * 48u; x++) {
+			EARLY_FB[y * EARLY_STRIDE + x] = color;
+		}
+	}
+	__asm__ volatile("dsb sy" ::: "memory");
 }
 
 void
@@ -687,15 +707,28 @@ s.patch("0005-a03-early-framebuffer.patch", [
      "#include <arm64/proc_reg.h>\n",
      "#include <arm64/proc_reg.h>\n#include <arm64/a03_early.h>\n"),
 
+    # The Bergamota donor tree already replaced the original prologue with
+    # sweet_early_* calls, so the old "DTEntry chosen" context does not exist.
+    # Anchor on what is actually there: the first statement block of arm_init.
     ("osfmk/arm/arm_init.c",
-     "\tDTEntry chosen = NULL;\n\tunsigned int dt_entry_size = 0;\n\n\tarm_slide_rebase_and_sign_image();\n",
-     "\tDTEntry chosen = NULL;\n\tunsigned int dt_entry_size = 0;\n\n"
+     "\tunsigned int dt_entry_size = 0;\n\n\tsweet_early_set_cmdline(args->CommandLine);\n",
+     "\tunsigned int dt_entry_size = 0;\n\n"
+     "\ta03_early_band(9);\n"
      "\ta03_early_mark(1, \"arm_init entered (MMU on)\");\n\n"
-     "\tarm_slide_rebase_and_sign_image();\n"),
+     "\tsweet_early_set_cmdline(args->CommandLine);\n"),
+
+    ("osfmk/arm/arm_init.c",
+     "\tarm_slide_rebase_and_sign_image();\n",
+     "\tarm_slide_rebase_and_sign_image();\n\ta03_early_band(10);\n"),
+
+    ("osfmk/arm/arm_init.c",
+     "\tarm_static_if_init(args);\n",
+     "\tarm_static_if_init(args);\n\ta03_early_band(11);\n"),
 
     ("osfmk/arm/arm_init.c",
      "\tPE_init_platform(FALSE, args); /* Get platform expert set up */\n",
      "\tPE_init_platform(FALSE, args); /* Get platform expert set up */\n"
+     "\ta03_early_band(12);\n"
      "\ta03_early_mark(2, \"PE_init_platform done\");\n"),
 
     ("osfmk/arm/arm_init.c",

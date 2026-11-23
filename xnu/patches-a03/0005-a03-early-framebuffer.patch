@@ -2,7 +2,7 @@ diff --git a/osfmk/arm64/a03_early.h b/osfmk/arm64/a03_early.h
 new file mode 100644
 --- /dev/null
 +++ b/osfmk/arm64/a03_early.h
-@@ -0,0 +1,22 @@
+@@ -0,0 +1,24 @@
 +/* Early screen diagnostics, valid only while the bootstrap TTBR0 is live. */
 +#ifndef _ARM64_A03_EARLY_H_
 +#define _ARM64_A03_EARLY_H_
@@ -11,11 +11,13 @@ new file mode 100644
 +#include <stdarg.h>
 +
 +#if defined(A03)
++void a03_early_band(unsigned int stage);
 +void a03_early_mark(unsigned int stage, const char *label);
 +void a03_early_putc(char c);
 +void a03_early_panic(const char *fmt, va_list *args);
 +void a03_early_disable(void);
 +#else
++static inline void a03_early_band(unsigned int stage) { (void)stage; }
 +static inline void a03_early_mark(unsigned int stage, const char *label)
 +{
 +	(void)stage;
@@ -29,7 +31,7 @@ diff --git a/osfmk/arm64/a03_early.c b/osfmk/arm64/a03_early.c
 new file mode 100644
 --- /dev/null
 +++ b/osfmk/arm64/a03_early.c
-@@ -0,0 +1,132 @@
+@@ -0,0 +1,150 @@
 +/*
 + * A03 bootstrap console. No allocation, locks, DT parsing or per-CPU state:
 + * panic() can reach this before a current thread exists. start.s maps the boot
@@ -51,6 +53,8 @@ new file mode 100644
 +#define EARLY_TOP        (EARLY_HEIGHT - 32u)
 +#define EARLY_ROWS       (EARLY_TOP / EARLY_CELL_H)
 +#define EARLY_COLS       (EARLY_WIDTH / EARLY_CELL_W)
++/* Draw text immediately above the progress bands, not at the top of the panel. */
++#define EARLY_TEXT_Y(r)  (EARLY_TOP - EARLY_CELL_H - (r) * EARLY_CELL_H)
 +
 +#define EARLY_FG         0xffffffffu   /* BGRA: white, A=0xff */
 +#define EARLY_BG         0xff000000u   /* BGRA: black, A=0xff */
@@ -64,7 +68,7 @@ new file mode 100644
 +a03_early_clear_row(void)
 +{
 +	for (unsigned int y = 0; y < EARLY_CELL_H; y++) {
-+		volatile uint32_t *line = EARLY_FB + (early_row * EARLY_CELL_H + y) * EARLY_STRIDE;
++		volatile uint32_t *line = EARLY_FB + (EARLY_TEXT_Y(early_row) + y) * EARLY_STRIDE;
 +		for (unsigned int x = 0; x < EARLY_WIDTH; x++) {
 +			line[x] = EARLY_BG;
 +		}
@@ -97,7 +101,7 @@ new file mode 100644
 +	for (unsigned int gy = 0; gy < 16; gy++) {
 +		for (unsigned int sy = 0; sy < EARLY_SCALE; sy++) {
 +			volatile uint32_t *line = EARLY_FB +
-+			    (early_row * EARLY_CELL_H + gy * EARLY_SCALE + sy) * EARLY_STRIDE +
++			    (EARLY_TEXT_Y(early_row) + gy * EARLY_SCALE + sy) * EARLY_STRIDE +
 +			    early_col * EARLY_CELL_W;
 +			for (unsigned int gx = 0; gx < 8; gx++) {
 +				uint32_t pixel = (glyph[gy] & (1u << gx)) ? EARLY_FG : EARLY_BG;
@@ -117,6 +121,22 @@ new file mode 100644
 +	while (*str) {
 +		a03_early_putc(*str++);
 +	}
++}
++
++/* Raw progress band, no font: safe to call as the first C statement. */
++void
++a03_early_band(unsigned int stage)
++{
++	if (early_disabled || stage > 15) {
++		return;
++	}
++	uint32_t color = 0xff00ff00u | (stage * 24u << 16);
++	for (unsigned int y = EARLY_TOP; y < EARLY_HEIGHT; y++) {
++		for (unsigned int x = stage * 48u; x < (stage + 1) * 48u; x++) {
++			EARLY_FB[y * EARLY_STRIDE + x] = color;
++		}
++	}
++	__asm__ volatile("dsb sy" ::: "memory");
 +}
 +
 +void
@@ -381,15 +401,36 @@ diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
  #include <arm64/sweet_early.h>
  #include <arm/pmap.h>
  #include <arm/caches_internal.h>
-@@ -382,6 +383,7 @@
+@@ -357,14 +358,19 @@
+ 	DTEntry chosen = NULL;
+ 	unsigned int dt_entry_size = 0;
+ 
++	a03_early_band(9);
++	a03_early_mark(1, "arm_init entered (MMU on)");
++
+ 	sweet_early_set_cmdline(args->CommandLine);
+ 	sweet_early_set_video(args->Video.v_baseAddr, args->Video.v_width,
+ 	    args->Video.v_height, args->Video.v_rowBytes);
+ 	sweet_early_mark(1, "arm_init entered (MMU on)");
+ 
+ 	arm_slide_rebase_and_sign_image();
++	a03_early_band(10);
+ 
+ 	arm_static_if_init(args);
++	a03_early_band(11);
+ 
+ 	/* If kernel integrity is supported, use a constant copy of the boot args. */
+ 	const_boot_args = *args;
+@@ -382,6 +388,8 @@
  #endif /* defined(HAS_APPLE_PAC) */
  
  	PE_init_platform(FALSE, args); /* Get platform expert set up */
++	a03_early_band(12);
 +	a03_early_mark(2, "PE_init_platform done");
  	sweet_early_mark(2, "PE_init_platform done");
  
  #if __arm64__
-@@ -466,6 +468,7 @@
+@@ -466,6 +474,7 @@
  #endif
  
  	ml_parse_cpu_topology();
@@ -397,7 +438,7 @@ diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
  	sweet_early_mark(3, "ml_parse_cpu_topology done");
  
  
-@@ -504,6 +507,7 @@
+@@ -504,6 +513,7 @@
  
  	kernel_debug_string_early("kernel_startup_bootstrap");
  	kernel_startup_bootstrap();
@@ -405,7 +446,7 @@ diff --git a/osfmk/arm/arm_init.c b/osfmk/arm/arm_init.c
  	sweet_early_mark(5, "kernel_startup_bootstrap done");
  
  	/*
-@@ -581,6 +585,7 @@
+@@ -581,6 +591,7 @@
  	pmap_first_pnum = (ppnum_t)atop(gDramBase);
  
  	sweet_early_mark(7, "entering arm_vm_init");
