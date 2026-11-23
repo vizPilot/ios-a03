@@ -41,3 +41,24 @@ diff --git a/osfmk/kern/exclaves.c b/osfmk/kern/exclaves.c
  #include <Tightbeam/tightbeam.h>
  #include <Tightbeam/tightbeam_private.h>
  #endif
+@@ -3329,7 +3330,7 @@
+ #endif /* CONFIG_EXCLAVES */
+ 
+ /* SWEET: the KDK ships the Tightbeam headers, but libTightbeam is only linked for exclaves configs. */
+-#if __has_include(<Tightbeam/tightbeam.h>) && !defined(ARM64_BOARD_CONFIG_SWEET)
++#if __has_include(<Tightbeam/tightbeam.h>) && !defined(ARM64_BOARD_CONFIG_SWEET) && !defined(ARM64_BOARD_CONFIG_A03)
+ 
+ #include <Tightbeam/tightbeam.h>
+ 
+diff --git a/osfmk/kern/exception.c b/osfmk/kern/exception.c
+--- a/osfmk/kern/exception.c
++++ b/osfmk/kern/exception.c
+@@ -962,7 +962,7 @@
+ 	return exception_triage_thread(exception, code, codeCnt, thread);
+ }
+ 
+-#if defined(ARM64_BOARD_CONFIG_SWEET)
++#if defined(ARM64_BOARD_CONFIG_SWEET) || defined(ARM64_BOARD_CONFIG_A03)
+ #include <vm/vm_shared_region_xnu.h>
+ #include <arm/thread.h>
+ 

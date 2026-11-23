@@ -366,14 +366,22 @@ master = ("# A03 (Unisoc T606) bring-up config.\n"
           "# the open-source arm64 asm/pmap and with Apple PMU counters removed.\n"
           + master)
 master = master.replace(
-    "config_requires_u32_munging config_delay_idle_sleep config_proc_udata_storage config_uexc config_darkboot config_pmap_ppl ]",
-    "config_requires_u32_munging config_delay_idle_sleep config_proc_udata_storage config_uexc config_darkboot nos_arm_asm nos_arm_pmap ]", 1)
+    "config_requires_u32_munging config_delay_idle_sleep config_proc_udata_storage config_uexc config_darkboot ARM_EXTRAS_BASE ]",
+    "config_requires_u32_munging config_delay_idle_sleep config_proc_udata_storage config_uexc config_darkboot nos_arm_asm nos_arm_pmap ARM_EXTRAS_BASE ]", 1)
 master = master.replace(
     "#  CPU_COUNTERS_BASE = [ config_cpu_counters config_pervasive_cpi config_pervasive_energy ]",
     "#  CPU_COUNTERS_BASE = [ ]", 1)
 master = master.replace(
     "config_voucher_deprecated PARAVIRT_BASE ]",
     "config_voucher_deprecated PARAVIRT_BASE config_ledger_interval_max ]", 1)
+# SWEET pulls in the page-granular zone allocator; without it several VM
+# counters and pmap symbols stay undefined at link time.
+master = master.replace(
+    "#  VM_DEV =         [ VM_BASE dynamic_codesigning VM_EXTRA_DEV ]",
+    "#  VM_DEV =         [ VM_BASE dynamic_codesigning pgzalloc VM_EXTRA_DEV ]", 1)
+master = master.replace(
+    "#  VM_DEBUG =       [ VM_BASE dynamic_codesigning VM_EXTRA_DEV ]",
+    "#  VM_DEBUG =       [ VM_BASE dynamic_codesigning pgzalloc VM_EXTRA_DEV ]", 1)
 for line in ("#  SECURITY_RELEASE = [ SECURITY_BASE ]",
              "#  SECURITY_DEV   =   [ SECURITY_BASE ]",
              "#  SECURITY_DEBUG =   [ SECURITY_BASE ]"):
@@ -910,4 +918,12 @@ s.patch("0010-a03-platform-stubs.patch", [
      "#if __has_include(<Tightbeam/tightbeam.h>)\n",
      "/* A03: the KDK headers exist, but libTightbeam is not linked here. */\n"
      "#if __has_include(<Tightbeam/tightbeam.h>) && !defined(ARM64_BOARD_CONFIG_A03)\n"),
+    ("osfmk/kern/exclaves.c",
+     "#if __has_include(<Tightbeam/tightbeam.h>) && !defined(ARM64_BOARD_CONFIG_SWEET)\n",
+     "#if __has_include(<Tightbeam/tightbeam.h>) && !defined(ARM64_BOARD_CONFIG_SWEET) && !defined(ARM64_BOARD_CONFIG_A03)\n"),
+    # Bergamota's process sampler lives in a SWEET-only block of exception.c;
+    # its caller in bsd/dev/sweet_sample.c is compiled for every board.
+    ("osfmk/kern/exception.c",
+     "#if defined(ARM64_BOARD_CONFIG_SWEET)\n",
+     "#if defined(ARM64_BOARD_CONFIG_SWEET) || defined(ARM64_BOARD_CONFIG_A03)\n"),
 ])

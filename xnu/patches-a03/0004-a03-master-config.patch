@@ -29,7 +29,7 @@ new file mode 100644
 +#else
 +#  ARM_EXTRAS_BASE = [ config_pmap_ppl ]
 +#endif
-+#  KERNEL_BASE =    [ arm64 medium msgb_large config_requires_u32_munging config_delay_idle_sleep config_proc_udata_storage config_uexc config_darkboot ARM_EXTRAS_BASE ]
++#  KERNEL_BASE =    [ arm64 medium msgb_large config_requires_u32_munging config_delay_idle_sleep config_proc_udata_storage config_uexc config_darkboot nos_arm_asm nos_arm_pmap ARM_EXTRAS_BASE ]
 +#  KERNEL_RELEASE = [ KERNEL_BASE release ]
 +#  KERNEL_DEV =     [ KERNEL_BASE development mach_assert config_xnupost proc_ref_debug config_proc_resource_limits config_ext_paniclog ]
 +#  KERNEL_DEBUG =   [ KERNEL_BASE debug mach_assert config_xnupost config_waitq_stats config_workloop_debug config_proc_resource_limits config_ext_paniclog ]
@@ -101,8 +101,8 @@ new file mode 100644
 +#endif /* MASTER_CONFIG_ENABLE_KERNEL_TAG && MASTER_CONFIG_ENABLE_SPTM */
 +#  VM_BASE =        [ vm_pressure_events memorystatus config_code_decryption encrypted_swap config_deferred_reclaim VM_EXTRA ]
 +#  VM_RELEASE =     [ VM_BASE ]
-+#  VM_DEV =         [ VM_BASE dynamic_codesigning VM_EXTRA_DEV ]
-+#  VM_DEBUG =       [ VM_BASE dynamic_codesigning VM_EXTRA_DEV ]
++#  VM_DEV =         [ VM_BASE dynamic_codesigning pgzalloc VM_EXTRA_DEV ]
++#  VM_DEBUG =       [ VM_BASE dynamic_codesigning pgzalloc VM_EXTRA_DEV ]
 +#  VM_KASAN =       [ VM_BASE dynamic_codesigning config_kasan config_ubsan config_kcov config_ksancov kernel_tagging kernel_tbi ]
 +#  SECURITY_BASE  =   [ config_macf config_audit kernel_integrity config_csr config_csr_from_dt config_setuid config_kas_info config_secure_bsd_root config_arcade config_supplemental_signatures second_static_trust_cache reslide_shared_cache ]
 +#  SECURITY_RELEASE = [ SECURITY_BASE  config_bti_telemetry ]
