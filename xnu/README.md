@@ -1,6 +1,6 @@
 # Andamiaje de build: XNU 12377.121.6 para A03 / T606
 
-Estado: **7 parches generados contra el árbol con los donantes de Bergamota aplicados y verificados con `git apply`; kernel NO compilado ni probado.**
+Estado: **7 parches generados contra el árbol donante, verificados con `git apply`; corregido el arch slice `arm64e` y el framebuffer SWEET arrastrado. Kernel NO compilado ni probado todavía.**
 
 Todo lo de aquí es texto fuente. No hay binarios de Apple, kernelcache, KDK,
 IPSW ni parches de terceros vendorizados en este repo.
@@ -12,7 +12,7 @@ IPSW ni parches de terceros vendorizados en este repo.
 | `patches-a03/0001-a03-machine-config.patch` | añade `MACHINE_CONFIG=A03`, `-march=armv8.2-a+crypto`, slice `arm64` sin PAC, sin `lib<A03>.os.*` ni Tightbeam |
 | `patches-a03/0002-a03-board-header.patch` | `pexpert/arm64/A03.h`, `board_config.h`, Makefile, `MMU_CLINE` |
 | `patches-a03/0003-a03-gic-v3-timer.patch` | GICv3 Group 1 NS, timer INTID 27, SGI 1, `sleh_irq` |
-| `patches-a03/0004-a03-master-config.patch` | `config/MASTER.arm64.a03` con `nos_arm_asm`/`nos_arm_pmap` |
+| `patches-a03/0004-a03-master-config.patch` | `config/MASTER.arm64.a03`, `nos_arm_asm`/`nos_arm_pmap` y exclusión de `SweetFramebuffer.cpp` |
 | `patches-a03/0005-a03-early-framebuffer.patch` | banda magenta en `start.s`, consola de etapas en `0x9E000000`, hook de panic |
 | `patches-a03/0008-a03-device-tree-platform-expert.patch` | `A03PlatformExpert`, `IONameMatch='sprd,ums9230'` |
 | `patches-a03/0010-a03-platform-stubs.patch` | `ml_device_is_prod_fused`, guard de Tightbeam |

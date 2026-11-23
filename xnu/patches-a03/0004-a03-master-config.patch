@@ -138,6 +138,18 @@ new file mode 100644
 +options   CONFIG_RESLIDE_SHARED_CACHE		# <reslide_shared_cache>
 +options   CONFIG_KERNEL_TBI		# <kernel_tbi>
 +options   CONFIG_KERNEL_TAGGING		# <kernel_tagging>
+diff --git a/iokit/conf/files.arm64 b/iokit/conf/files.arm64
+--- a/iokit/conf/files.arm64
++++ b/iokit/conf/files.arm64
+@@ -13,7 +13,7 @@
+ iokit/Kernel/arm/SweetKeyStore.cpp                               optional iokitcpp
+ iokit/Kernel/arm/SweetWatchdog.cpp                               optional iokitcpp
+ iokit/Kernel/arm/SweetSurface.cpp                                optional iokitcpp
+-iokit/Kernel/arm/SweetFramebuffer.cpp                            optional iokitcpp
++iokit/Kernel/arm/SweetFramebuffer.cpp                            optional sweet_iokit
+ iokit/Kernel/arm/SweetAdreno.cpp                                 optional iokitcpp
+ iokit/Kernel/arm/SweetNetwork.cpp                                optional iokitcpp
+ iokit/Kernel/arm/SweetBattery.cpp                                optional iokitcpp
 diff --git a/osfmk/conf/files.arm64 b/osfmk/conf/files.arm64
 --- a/osfmk/conf/files.arm64
 +++ b/osfmk/conf/files.arm64

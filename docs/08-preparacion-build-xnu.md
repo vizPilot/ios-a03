@@ -122,6 +122,8 @@ consumidor de ese contrato.
 - [x] Publicar el andamiaje en `https://github.com/vizPilot/ios-a03` (124 archivos de texto, sin binarios ni seriales).
 - [x] Ejecutar el workflow `xnu-a03.yml` en `macos-15-intel` (run `45080969152`): falló aplicando `9000-a03-0001`.
 - [x] Regenerar la serie A03 contra el árbol con 264 parches donantes aplicados: 7 parches, verificados con `git apply`.
+- [x] Ejecutar el segundo run (`45083363795`): los parches aplicaron, falló en compilación.
+- [x] Corregir las condiciones `arm64e`/Tightbeam invertidas y excluir el framebuffer SWEET del slice A03.
 - [ ] Reejecutar el build en macOS y verificar el binario resultante.
 - [ ] Integrar el kernel compilado con `stub/build_macho_boot.sh` como kernelcache de prueba.
 
@@ -141,6 +143,30 @@ La serie se regeneró con `A03_XNU_ROOT` apuntando a un árbol con 264 donantes 
 parches `0006`, `0007` y `0009` desaparecieron porque el donante ya aportaba esos cambios.
 Los 7 parches resultantes pasan `git apply --check` en orden sobre ese árbol.
 El log del primer fallo está en el artefacto `xnu-a03-build-log` del run `45080969152`.
+
+### Resultado del segundo run de GitHub Actions
+
+Run `45083363795`: los 7 parches A03 aplicaron limpio y el build llegó a compilación, donde falló
+(`make[5]: *** [do_all] Error 2`). Los errores útiles del log fueron:
+
+```text
+osfmk/arm64/status.c:140:2: error: call to undeclared function 'MANIPULATE_SIGNED_USER_THREAD_STATE'
+bsd/dev/arm64/sysctl.c:431:13: error: call to undeclared function 'ml_task_get_disable_user_jop'
+osfmk/vm/vm_shared_region.c:1239:24: error: no member named 'disable_jop' in 'struct pmap'
+iokit/Kernel/arm/SweetFramebuffer.cpp:56:10: error: use of undeclared identifier 'PE_parse_boot_argn'
+```
+
+Causa raíz: en `MakeInc.def` Bergamota usa `ifneq ($(CURRENT_MACHINE_CONFIG),SWEET)` para quedarse
+en `arm64` (sin PAC) y para no enlazar Tightbeam. Al portarlo escribimos
+`ifneq ($(filter SWEET A03,...),)`; con `A03` el `filter` devuelve `A03` (no vacío), así que la
+condición era **verdadera**: el kernel se compilaba como `arm64e` y activaba PAC/JOP. La corrección
+es `ifeq ($(filter SWEET A03,...),)` en esos dos puntos. Además, `SweetFramebuffer.cpp` (parche
+donante, 1080×2400 y boot args SWEET) se compilaba en el slice A03; ahora está detrás de la opción
+`sweet_iokit`, que no aparece en `MASTER.arm64.a03`.
+
+Dos parches base de `darwin-xnu-build` siguen siendo omitidos por el runner, de forma inocua:
+`link_kdk.patch` (no queremos `-force_load libA03.os.*`) y `remove_applefeatures_include.patch`
+(el donante ya quitó ese include).
 
 ## 7. Andamiaje creado
 
@@ -166,7 +192,8 @@ framebuffer vía `pe_serial.c`) y el 5 (eMMC/ramdisk) siguen pendientes.
 sin cambios desde el 20/11): no hace falta restaurarlo después de la última prueba Mach-O.
 
 **Honestidad:** hoy no existe XNU compilado para T606. Lo que existe es un cargador Mach-O
-funcional, una serie de siete parches que `git apply` acepta limpiamente **después** de los
-donantes, y un plan de plataforma basado en datos reales del DTB. Los parches **no** han sido
-compilados (no hay Xcode/KDK aquí) y la serie completa de Bergamota sigue siendo necesaria para
-que el build enlace.
+funcional y una serie de siete parches que `git apply` acepta limpiamente **después** de los
+donantes. El segundo run demostró que aplicar no basta: la primera compilación falló por una
+condición `arm64e` invertida y por código SWEET arrastrado al slice A03; ambos están corregidos,
+pero **queda verificar el siguiente run**. No hay Xcode/KDK en este equipo y la serie completa de
+Bergamota sigue siendo necesaria para que el build enlace.

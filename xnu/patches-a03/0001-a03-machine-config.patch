@@ -25,7 +25,7 @@ diff --git a/makedefs/MakeInc.def b/makedefs/MakeInc.def
 -# sweet's Cortex-A76/A55 have no pointer authentication: stay plain arm64
 -ifneq ($(CURRENT_MACHINE_CONFIG),SWEET)
 +# sweet/a03 have no pointer authentication: stay plain arm64
-+ifneq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)
++ifeq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)
  export ARCH_STRING_FOR_CURRENT_MACHINE_CONFIG := arm64e
  endif
  endif
@@ -43,7 +43,7 @@ diff --git a/makedefs/MakeInc.def b/makedefs/MakeInc.def
  
  # SWEET: the KDK's libTightbeam.a is x86_64/arm64e only and SWEET has no exclaves; never link or export it.
 -ifneq ($(CURRENT_MACHINE_CONFIG),SWEET)
-+ifneq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)
++ifeq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)
  ifneq ($(wildcard $(SDKROOT)/usr/local/lib/kernel/platform/libTightbeam.a),)
  XNU_CONFIG_TIGHTBEAM := 1
  TIGHTBEAM_IN_SDK := 1

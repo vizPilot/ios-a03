@@ -99,7 +99,7 @@ s.patch("0001-a03-machine-config.patch", [
      "# sweet's Cortex-A76/A55 have no pointer authentication: stay plain arm64\n"
      "ifneq ($(CURRENT_MACHINE_CONFIG),SWEET)\n",
      "# sweet/a03 have no pointer authentication: stay plain arm64\n"
-     "ifneq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)\n"),
+     "ifeq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)\n"),
 
     # No closed KDK SoC archive exists for a Unisoc board; A03 builds the
     # open-source asm/pmap instead (see MASTER.arm64.a03).
@@ -110,7 +110,7 @@ s.patch("0001-a03-machine-config.patch", [
     # Tightbeam is arm64e/Apple-only and A03 has no exclaves.
     ("makedefs/MakeInc.def",
      "ifneq ($(CURRENT_MACHINE_CONFIG),SWEET)\nifneq ($(wildcard $(SDKROOT)/usr/local/lib/kernel/platform/libTightbeam.a),)\n",
-     "ifneq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)\n"
+     "ifeq ($(filter SWEET A03,$(CURRENT_MACHINE_CONFIG)),)\n"
      "ifneq ($(wildcard $(SDKROOT)/usr/local/lib/kernel/platform/libTightbeam.a),)\n"),
     ("makedefs/MakeInc.def",
      "endif # !SWEET\n",
@@ -381,6 +381,13 @@ for line in ("#  SECURITY_RELEASE = [ SECURITY_BASE ]",
 
 s.patch("0004-a03-master-config.patch", [
     ("config/MASTER.arm64.a03", "", master),
+
+    # Bergamota's continuous-splash framebuffer is SWEET/Qualcomm-specific:
+    # it hardcodes another panel and uses boot args we do not provide. Keep it
+    # out of the A03 slice; our own early console draws at 0x9E000000.
+    ("iokit/conf/files.arm64",
+     "iokit/Kernel/arm/SweetFramebuffer.cpp                            optional iokitcpp\n",
+     "iokit/Kernel/arm/SweetFramebuffer.cpp                            optional sweet_iokit\n"),
 
     # The OSS tag lists this file but does not publish it.
     ("osfmk/conf/files.arm64",
