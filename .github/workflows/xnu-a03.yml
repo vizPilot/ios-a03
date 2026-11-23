@@ -92,8 +92,13 @@ jobs:
           set -e
           src=dxb/fakeroot/System/Library/Kernels/kernel.development.a03
           test -f "$src"
+          file "$src" | grep -q 'arm64'
           grep -aFq 'xnu-12377.121.6' "$src"
-          grep -aFq 'A03 EARLY' "$src"
+          # The optimizer may inline the early-console string into immediates,
+          # so check the A03 code via the unstripped Mach-O symbol instead.
+          unstripped=$(find dxb/build -name 'kernel.development.a03.unstripped.noctf' -print -quit)
+          test -n "$unstripped"
+          nm "$unstripped" | grep -q 'a03_early_mark'
           cp "$src" out/
           cp dxb/series-SHA256SUMS out/
           (cd out && shasum -a 256 kernel.development.a03 > SHA256SUMS)

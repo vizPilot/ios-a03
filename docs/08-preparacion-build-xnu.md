@@ -130,7 +130,9 @@ consumidor de ese contrato.
 - [x] Corregir los dos bloques `SWEET` duplicados en `0005` y verificar balance de `#if/#endif`.
 - [x] Quinto run (`45096409214`): compilación y enlace casi completos; queda 1 símbolo, `_ml_enable_monitor`.
 - [x] Extender el stub vacío de `ml_enable_monitor()` de SWEET a A03 en `machine_routines.c`.
-- [ ] Reejecutar el build en macOS y verificar el binario resultante.
+- [x] Sexto run (`45099912009`): **build y enlace correctos**; falló solo la verificación del artefacto.
+- [x] Sustituir el `grep` frágil de `A03 EARLY` por `file`/`nm` sobre el Mach-O sin strip.
+- [ ] Reejecutar el build y publicar el artefacto `xnu-a03-kernel`.
 - [ ] Integrar el kernel compilado con `stub/build_macho_boot.sh` como kernelcache de prueba.
 
 ### Resultado del primer run de GitHub Actions
@@ -225,6 +227,21 @@ Bergamota añadió un stub vacío de `ml_enable_monitor()` detrás de `#if defin
 `osfmk/arm64/machine_routines.c`, porque `arm_vm_init()` lo llama siempre y la definición de Apple
 vive en la librería cerrada del SoC. A03 no tiene monitor/PPL, así que se reutiliza el mismo stub
 extendiendo el guard a `defined(SWEET) || defined(ARM64_BOARD_CONFIG_A03)`.
+
+### Resultado del sexto run de GitHub Actions
+
+Run `45099912009`: **`Build XNU 12377 for A03` pasó** (32 min) y se generó `kernel.development.a03`.
+El job falló después, en `Verify and publish kernel`:
+
+```text
+grep -aFq 'A03 EARLY' "$src"   → exit 1
+```
+
+El código de consola temprana sí está compilado (`a03_early.o` aparece en el log y los símbolos
+enlazan); con `-O2` el compilador puede desplegar `a03_early_string("A03 EARLY ")` en inmediatos
+en vez de conservar la cadena contigua, así que el `grep` no era una prueba válida. La verificación
+ahora comprueba `file ... arm64`, la cadena de versión y, vía `nm`, que el símbolo
+`a03_early_mark` existe en `kernel.development.a03.unstripped.noctf`.
 
 ## 7. Andamiaje creado
 
